@@ -17,7 +17,8 @@ backend/
   spark_cad.py    Spark Open -> CadQuery -> verify -> repair loop; run() yields progress events
   app.py          FastAPI: /check-photo, /diagnose, /generate (SSE), /stl/{name}
 frontend/src/
-  Capture -> Measure -> Generate -> Result   one component per screen; api.ts holds all fetches
+  Landing -> Capture -> Measure -> Generate -> Result   one component per screen; api.ts holds all fetches
+  index.css       design tokens (paper/ink/safety-orange, IBM Plex Sans + Mono) and all styles; ui.tsx shared bits
 ```
 
 ## Commands
