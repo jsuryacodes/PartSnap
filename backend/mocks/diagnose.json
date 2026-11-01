@@ -1,0 +1,6 @@
+[
+  {
+    "content": "{\"fix_type\": \"corner_cap\", \"title\": \"Chipped tabletop corner\", \"explanation\": \"The corner of the tabletop has a chip about 1 cm across, with sound wood around it. A corner cap that slides over the corner hides the chip and protects it from further damage.\", \"damage\": {\"photo\": \"top\", \"polygon\": [[0.30, 0.35], [0.40, 0.35], [0.37, 0.40], [0.30, 0.45]]}, \"measurements\": [{\"key\": \"edge_thickness\", \"label\": \"Tabletop thickness\", \"hint\": \"Top surface to bottom surface, at the edge.\", \"photo\": \"side\", \"line\": [[0.40, 0.45], [0.40, 0.57]], \"example\": 18}, {\"key\": \"reach_x\", \"label\": \"Cap length along edge A\", \"hint\": \"From the corner, past the end of the chip, plus about 1 cm.\", \"photo\": \"top\", \"line\": [[0.30, 0.35], [0.65, 0.35]], \"example\": 40}, {\"key\": \"reach_y\", \"label\": \"Cap length along edge B\", \"hint\": \"Same along the other edge.\", \"photo\": \"top\", \"line\": [[0.30, 0.35], [0.30, 0.70]], \"example\": 40}]}",
+    "usage": {"prompt_tokens": 4380, "completion_tokens": 260}
+  }
+]

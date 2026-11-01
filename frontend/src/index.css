@@ -45,3 +45,14 @@ button:disabled { opacity: 0.5; cursor: default; }
 .warn { color: var(--bad); font-weight: 500; }
 .by { color: var(--muted); font-size: 12px; }
 .by::before { content: '◆ '; color: var(--accent); }
+
+h3 { margin: 20px 0 6px; font-size: 16px; }
+.damage { fill: rgba(220, 38, 38, 0.3); stroke: var(--bad); stroke-width: 2px; vector-effect: non-scaling-stroke; }
+.measure { stroke: #facc15; stroke-width: 4px; vector-effect: non-scaling-stroke; stroke-linecap: round; }
+.tag { position: absolute; transform: translate(-50%, -50%); width: 24px; height: 24px; border-radius: 50%; background: #facc15; color: #18181b; font-size: 13px; font-weight: 700; display: grid; place-items: center; }
+.tag.inline { position: static; transform: none; display: inline-grid; width: 20px; height: 20px; font-size: 12px; }
+.field { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.field small { display: block; color: var(--muted); font-size: 12px; }
+.mm { white-space: nowrap; color: var(--muted); }
+.mm input { width: 84px; font: inherit; font-size: 16px; padding: 8px; border: 1px solid var(--line); border-radius: 8px; text-align: right; }
+.wide { width: 100%; margin-top: 16px; }
