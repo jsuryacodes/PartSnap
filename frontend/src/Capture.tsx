@@ -46,7 +46,7 @@ function useTilt() {
   }
 
   useEffect(() => {
-    if (!DOE) return setMode('off')
+    if (!DOE || !matchMedia("(pointer: coarse)").matches) return setMode("off") // desktop: no level
     if (typeof DOE.requestPermission === 'function') return setMode('ask') // iOS: needs a tap
     return listen()
   }, [])

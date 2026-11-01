@@ -17,7 +17,12 @@
 MVP fix type: **corner cap**, an L-shaped cap that slides over a chipped tabletop corner.
 
 ## Setup
-_TODO_
+```
+cd backend && python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt
+cp .env.example .env          # MOCK_MODE=1 runs the whole app on saved responses
+.venv/bin/uvicorn app:app --port 8000
+cd ../frontend && npm i && npm run dev   # open the Network URL on your phone
+```
 
 ## Built during the hackathon (Oct 26 – Nov 4, 2026)
 Everything in this repo was built during the Meta Global AI Developer Hackathon. The commit history is the build log.

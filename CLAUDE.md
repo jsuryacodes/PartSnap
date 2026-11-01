@@ -14,15 +14,20 @@ backend/
   verify.py       sandboxed run + watertight / bbox / interference checks + STL export
   models.py       all model calls: MOCK_MODE, disk cache, token logging
   mocks/          saved model responses for MOCK_MODE
-  spark_cad.py    Spark Open -> CadQuery -> verify -> repair loop (generate())
-frontend/
+  spark_cad.py    Spark Open -> CadQuery -> verify -> repair loop; run() yields progress events
+  app.py          FastAPI: /check-photo, /diagnose, /generate (SSE), /stl/{name}
+frontend/src/
+  Capture -> Measure -> Generate -> Result   one component per screen; api.ts holds all fetches
 ```
 
 ## Commands
 ```
 cd backend && python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt
+.venv/bin/uvicorn app:app --port 8000     # API (MOCK_MODE=1 unless backend/.env says otherwise)
 .venv/bin/python verify.py                # self-check: hand-written corner cap
 .venv/bin/python spark_cad.py             # Spark Open -> CadQuery -> verify loop
+cd frontend && npm i && npm run dev       # HTTPS on the LAN for phones; /api proxies to :8000
+HTTP=1 npx vite --port 5174               # plain HTTP for desktop browser testing
 ```
 
 ## Conventions

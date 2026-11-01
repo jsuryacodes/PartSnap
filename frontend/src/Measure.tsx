@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { diagnose, type Diagnosis, type Photos, type View } from './api'
 
 export type Params = Record<string, number>
@@ -7,10 +7,17 @@ export default function Measure({ photos, onDone }: { photos: Photos; onDone: (d
   const [d, setD] = useState<Diagnosis | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [values, setValues] = useState<Record<string, string>>({})
-  const urls = useMemo(() => Object.fromEntries(Object.entries(photos).map(([k, b]) => [k, URL.createObjectURL(b)])) as Record<View, string>, [photos])
-  useEffect(() => () => Object.values(urls).forEach(URL.revokeObjectURL), [urls])
-
+  const [urls, setUrls] = useState<Partial<Record<View, string>>>({})
   useEffect(() => {
+    const u = Object.fromEntries(Object.entries(photos).map(([k, b]) => [k, URL.createObjectURL(b)]))
+    setUrls(u)
+    return () => Object.values(u).forEach(URL.revokeObjectURL)
+  }, [photos])
+
+  const started = useRef(false)
+  useEffect(() => {
+    if (started.current) return // StrictMode double-run would spend a second Muse Spark call
+    started.current = true
     diagnose(photos).then((r) => {
       setD(r)
       setValues(Object.fromEntries(Object.entries(r.settings).map(([k, v]) => [k, String(v)])))

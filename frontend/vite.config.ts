@@ -4,7 +4,7 @@ import { defineConfig } from 'vite'
 
 // HTTPS + LAN so a phone can use the camera and motion sensors. /api proxies to the local FastAPI.
 export default defineConfig({
-  plugins: [react(), basicSsl()],
+  plugins: [react(), process.env.HTTP ? null : basicSsl()], // HTTP=1 for desktop-only dev (localhost is a secure context)
   server: {
     host: true,
     proxy: { '/api': { target: 'http://127.0.0.1:8000', rewrite: (p) => p.replace(/^\/api/, '') } },
