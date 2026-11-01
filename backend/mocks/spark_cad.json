@@ -5,7 +5,7 @@
         "message": {
           "role": "assistant",
           "reasoning_content": "Outer block spans from -(c+w) to the reach on X/Y and wraps top and bottom. Cut a pocket for the table, open toward +X/+Y.",
-          "content": "```python\nimport cadquery as cq\nt, rx, ry, w, c = 18.0, 40.0, 40.0, 2.5, 0.2\nouter = cq.Workplane().box(rx + c + w, ry + c + w, t + 2 * (c + w), centered=False).translate((-c - w, -c - w, -c - w))\npocket = cq.Workplane().box(rx + c + 1, ry + c + 1, t + c, centered=False).translate((-c, -c, 0))\nresult = outer.cut(pocket)\n```"
+          "content": "```python\nimport cadquery as cq\nt, rx, ry, w, c = ${edge_thickness}, ${reach_x}, ${reach_y}, ${wall}, ${clearance}\nouter = cq.Workplane().box(rx + c + w, ry + c + w, t + 2 * (c + w), centered=False).translate((-c - w, -c - w, -c - w))\npocket = cq.Workplane().box(rx + c + 1, ry + c + 1, t + c, centered=False).translate((-c, -c, 0))\nresult = outer.cut(pocket)\n```"
         },
         "finish_reason": "stop"
       }
@@ -22,7 +22,7 @@
         "message": {
           "role": "assistant",
           "reasoning_content": "The bottom gap is 0 because the pocket starts at z=0. It must start at z=-c and be t+2c tall so both top and bottom get clearance.",
-          "content": "```python\nimport cadquery as cq\nt, rx, ry, w, c = 18.0, 40.0, 40.0, 2.5, 0.2\nouter = cq.Workplane().box(rx + c + w, ry + c + w, t + 2 * (c + w), centered=False).translate((-c - w, -c - w, -c - w))\npocket = cq.Workplane().box(rx + c + 1, ry + c + 1, t + 2 * c, centered=False).translate((-c, -c, -c))\nresult = outer.cut(pocket)\n```"
+          "content": "```python\nimport cadquery as cq\nt, rx, ry, w, c = ${edge_thickness}, ${reach_x}, ${reach_y}, ${wall}, ${clearance}\nouter = cq.Workplane().box(rx + c + w, ry + c + w, t + 2 * (c + w), centered=False).translate((-c - w, -c - w, -c - w))\npocket = cq.Workplane().box(rx + c + 1, ry + c + 1, t + 2 * c, centered=False).translate((-c, -c, -c))\nresult = outer.cut(pocket)\n```"
         },
         "finish_reason": "stop"
       }

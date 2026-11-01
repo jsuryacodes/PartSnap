@@ -1,9 +1,15 @@
 """PartSnap API. Run: .venv/bin/uvicorn app:app --port 8000 (frontend proxies /api here)."""
 import inspect
+import json
+import re
+from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi.responses import FileResponse, StreamingResponse
+from pydantic import BaseModel
 
 import models
+import spark_cad
 from fixes import FIXES
 
 app = FastAPI(title="PartSnap")
@@ -70,3 +76,36 @@ async def diagnose(top: UploadFile = File(...), side: UploadFile = File(...), cl
     out["param_help"] = mod.PARAMS
     out["by"] = {"diagnosis": "Muse Spark", "segmentation": "SAM 3.1"}
     return out
+
+
+class GenerateReq(BaseModel):
+    fix: str
+    params: dict[str, float]
+
+
+@app.post("/generate")
+def generate(req: GenerateReq):
+    """Server-sent events: attempt / code / verify per attempt, then done."""
+    mod = FIXES.get(req.fix)
+    if mod is None:
+        raise HTTPException(400, f"unknown fix type {req.fix!r}")
+    if set(req.params) != set(mod.PARAMS):
+        raise HTTPException(400, f"params must be exactly {sorted(mod.PARAMS)}")
+    if not all(0 < v <= 1000 for v in req.params.values()) or req.params.get("clearance", 0) > 2:
+        raise HTTPException(400, "measurements must be in (0, 1000] mm and clearance at most 2 mm")
+
+    def events():
+        for e in spark_cad.run(req.fix, req.params):
+            if e.get("stl_path"):  # never send server paths; done carries the download URL
+                e["stl_url"] = f"/stl/{Path(e.pop('stl_path')).name}"
+            yield f"data: {json.dumps(e)}\n\n"
+
+    return StreamingResponse(events(), media_type="text/event-stream", headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/stl/{name}")
+def stl(name: str):
+    path = Path(__file__).parent / "out" / name
+    if not re.fullmatch(r"[\w-]+\.stl", name) or not path.exists():
+        raise HTTPException(404)
+    return FileResponse(path, media_type="model/stl", filename="partsnap-fix.stl")

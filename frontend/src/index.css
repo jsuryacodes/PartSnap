@@ -56,3 +56,21 @@ h3 { margin: 20px 0 6px; font-size: 16px; }
 .mm { white-space: nowrap; color: var(--muted); }
 .mm input { width: 84px; font: inherit; font-size: 16px; padding: 8px; border: 1px solid var(--line); border-radius: 8px; text-align: right; }
 .wide { width: 100%; margin-top: 16px; }
+
+.card { margin: 12px 0; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); }
+.card.pass { border-color: #86efac; }
+.card.fail { border-color: #fca5a5; }
+.card-head { display: flex; justify-content: space-between; gap: 8px; font-size: 14px; }
+.card-head span { color: var(--muted); text-align: right; }
+.card.fail .card-head span { color: var(--bad); }
+.card.pass .card-head span { color: var(--ok); }
+details { margin-top: 8px; font-size: 14px; }
+summary { cursor: pointer; color: var(--muted); }
+.reasoning { font-style: italic; }
+pre { overflow-x: auto; font-size: 12px; background: #f4f4f5; padding: 8px; border-radius: 8px; }
+.checks { list-style: none; padding: 0; margin: 8px 0 0; font-size: 14px; }
+.checks li { display: flex; justify-content: space-between; gap: 8px; padding: 3px 0; }
+.checks li span:last-child { color: var(--muted); text-align: right; }
+.checks .ok span:first-child { color: var(--ok); }
+.checks .bad span:first-child { color: var(--bad); font-weight: 600; }
+.small { font-size: 13px; }

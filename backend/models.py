@@ -16,6 +16,7 @@ load_dotenv(HERE / ".env")
 MOCK_MODE = os.getenv("MOCK_MODE", "1") == "1"
 CACHE = HERE / ".cache"
 MOCKS = HERE / "mocks"
+MOCK_LATENCY = float(os.getenv("MOCK_LATENCY", "1.0"))
 
 BASETEN_URL = "https://inference.baseten.co/v1/chat/completions"  # OpenAI-compatible
 SPARK_OPEN = "meta-models/muse-spark-open-1026"  # NOT meta-models/muse-spark-open
@@ -50,6 +51,7 @@ def call(provider: str, payload: dict, mock: str, mock_vars: dict | None = None)
         n = sum(m["role"] == "assistant" for m in payload.get("messages", []))
         raw = Template((MOCKS / f"{mock}.json").read_text()).safe_substitute(mock_vars or {})
         resp = json.loads(raw)[n]
+        time.sleep(MOCK_LATENCY)  # so the UI's streaming is visible in demos
     else:
         key = hashlib.sha256(json.dumps([provider, payload], sort_keys=True).encode()).hexdigest()
         f = CACHE / f"{key}.json"
