@@ -55,7 +55,7 @@ def fit_check(cap, mating):
     return interference, gaps
 
 
-def verify(code: str, fix: str, params: dict, out_dir="out") -> dict:
+def verify(code: str, fix: str, params: dict, out_dir=Path(__file__).parent / "out") -> dict:
     mod = FIXES[fix]
     res = {"ok": False, "error": None}
     with tempfile.TemporaryDirectory() as tmp:
