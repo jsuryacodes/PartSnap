@@ -14,7 +14,7 @@ backend/
   verify.py       sandboxed run + watertight / bbox / interference checks + STL export
   models.py       all model calls: MOCK_MODE, disk cache, token logging
   mocks/          saved model responses for MOCK_MODE
-  scripts/        dev scripts (spark_cad.py)
+  spark_cad.py    Spark Open -> CadQuery -> verify -> repair loop (generate())
 frontend/
 ```
 
@@ -22,7 +22,7 @@ frontend/
 ```
 cd backend && python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/python verify.py                # self-check: hand-written corner cap
-.venv/bin/python scripts/spark_cad.py     # Spark Open -> CadQuery -> verify loop
+.venv/bin/python spark_cad.py             # Spark Open -> CadQuery -> verify loop
 ```
 
 ## Conventions
