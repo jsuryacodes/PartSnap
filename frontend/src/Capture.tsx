@@ -107,7 +107,7 @@ export default function Capture({ onDone }: { onDone: (p: Photos) => void }) {
       if (idx + 1 < SHOTS.length) setIdx(idx + 1)
       else onDone(next as Photos)
     } catch (e) {
-      setRetake(String(e))
+      setRetake((e as Error).message)
     } finally {
       setChecking(false)
     }

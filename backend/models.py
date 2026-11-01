@@ -3,7 +3,9 @@ import base64
 import hashlib
 import json
 import os
+import threading
 import time
+from datetime import date
 from pathlib import Path
 from string import Template
 
@@ -14,7 +16,8 @@ HERE = Path(__file__).parent
 load_dotenv(HERE / ".env")
 
 MOCK_MODE = os.getenv("MOCK_MODE", "1") == "1"
-CACHE = HERE / ".cache"
+CACHE = Path(os.getenv("CACHE_DIR", HERE / ".cache"))  # a Modal Volume in production
+DAILY_CAP = int(os.getenv("DAILY_PAID_CALL_CAP", "300"))  # paid (live, uncached) model calls per day
 MOCKS = HERE / "mocks"
 MOCK_LATENCY = float(os.getenv("MOCK_LATENCY", "1.0"))
 
@@ -41,6 +44,25 @@ def _meta(payload):
 PROVIDERS = {"baseten": _baseten, "meta": _meta}
 
 
+class BudgetExceeded(Exception):
+    pass
+
+
+_spend_lock = threading.Lock()
+
+
+def _spend():
+    """Count one paid call against today's cap; the counter file lives next to the cache."""
+    # ponytail: file + in-process lock assumes one container (modal_app sets max_containers=1)
+    with _spend_lock:
+        CACHE.mkdir(parents=True, exist_ok=True)
+        f = CACHE / f"spend-{date.today()}.txt"
+        n = int(f.read_text()) if f.exists() else 0
+        if n >= DAILY_CAP:
+            raise BudgetExceeded(f"daily cap of {DAILY_CAP} paid model calls reached")
+        f.write_text(str(n + 1))
+
+
 def call(provider: str, payload: dict, mock: str, mock_vars: dict | None = None) -> dict:
     """mock: name of mocks/<mock>.json, a list of responses. In MOCK_MODE the Nth response is
     returned, where N = number of assistant turns already in payload["messages"] (repair round).
@@ -58,8 +80,9 @@ def call(provider: str, payload: dict, mock: str, mock_vars: dict | None = None)
         if f.exists():
             resp, source = json.loads(f.read_text()), "cache"
         else:
+            _spend()
             resp, source = PROVIDERS[provider](payload), "live"
-            CACHE.mkdir(exist_ok=True)
+            CACHE.mkdir(parents=True, exist_ok=True)
             f.write_text(json.dumps(resp))
     _log_usage(provider, payload.get("model"), source, resp.get("usage") or {}, time.time() - t0)
     return resp
@@ -78,6 +101,6 @@ def _log_usage(provider, model, source, usage, secs):
            "prompt_tokens": usage.get("prompt_tokens"), "completion_tokens": usage.get("completion_tokens"),
            "secs": round(secs, 2)}
     print(f"[model] {json.dumps(row)}")
-    CACHE.mkdir(exist_ok=True)
+    CACHE.mkdir(parents=True, exist_ok=True)
     with open(CACHE / "usage.jsonl", "a") as fh:
         fh.write(json.dumps(row) + "\n")

@@ -16,17 +16,18 @@ export default function Generate({ fix, params, onDone }: { fix: string; params:
     started.current = true
     generate(fix, params, (e) => {
       if (e.type === 'done') return setDone(e)
+      if (e.type === 'error') return setError(e.message)
       setAttempts((a) => {
         if (e.type === 'attempt') return [...a, { n: e.n, by: e.by }]
         return a.map((x) => x.n !== e.n ? x : e.type === 'code' ? { ...x, reasoning: e.reasoning, code: e.code } : { ...x, verify: e })
       })
-    }).catch((e) => setError(String(e)))
+    }).catch((e) => setError(e.message))
   }, [])
 
   const last = attempts.at(-1)?.verify
   return (
     <div className="screen">
-      <h2>{done ? (done.ok ? 'Fix verified ✓' : 'Could not generate a fix') : 'Designing your fix…'}</h2>
+      <h2>{done ? (done.ok ? 'Fix verified ✓' : 'Could not generate a fix') : error ? 'Something went wrong' : 'Designing your fix…'}</h2>
       <p className="by">CAD by Muse Spark Open · verified by CadQuery geometry checks</p>
       {attempts.map((a) => <AttemptCard key={a.n} a={a} clearance={params.clearance} />)}
       {error && <p className="warn">{error}</p>}

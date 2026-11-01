@@ -3,6 +3,7 @@
 The code must assign a cadquery Workplane/Shape to `result`, in the fix module's frame.
 """
 import hashlib
+import os
 import shutil
 import subprocess
 import sys
@@ -17,6 +18,7 @@ from fixes import FIXES
 BBOX_TOL = 0.2  # mm
 GAP_TOL = 0.1  # mm
 TIMEOUT_S = 60
+OUT_DIR = Path(os.getenv("OUT_DIR", Path(__file__).parent / "out"))  # a Modal Volume in production
 
 # ponytail: subprocess + timeout + CPU rlimit + empty env (no API keys) is not a jail;
 # swap for a container / Modal sandbox before running untrusted users' code at scale.
@@ -55,7 +57,7 @@ def fit_check(cap, mating):
     return interference, gaps
 
 
-def verify(code: str, fix: str, params: dict, out_dir=Path(__file__).parent / "out") -> dict:
+def verify(code: str, fix: str, params: dict, out_dir=OUT_DIR) -> dict:
     mod = FIXES[fix]
     res = {"ok": False, "error": None}
     with tempfile.TemporaryDirectory() as tmp:
@@ -106,7 +108,7 @@ def verify(code: str, fix: str, params: dict, out_dir=Path(__file__).parent / "o
             res["error"] = "; ".join(problems)
             return res
 
-        Path(out_dir).mkdir(exist_ok=True)
+        Path(out_dir).mkdir(parents=True, exist_ok=True)
         stl = Path(out_dir) / f"{fix}-{hashlib.sha256(code.encode()).hexdigest()[:12]}.stl"
         shutil.copy(Path(tmp) / "part.stl", stl)
         res.update(ok=True, stl_path=str(stl))

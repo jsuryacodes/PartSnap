@@ -21,7 +21,7 @@ export default function Measure({ photos, onDone }: { photos: Photos; onDone: (d
     diagnose(photos).then((r) => {
       setD(r)
       setValues(Object.fromEntries(Object.entries(r.settings).map(([k, v]) => [k, String(v)])))
-    }).catch((e) => setError(String(e)))
+    }).catch((e) => setError(e.message))
   }, [photos])
 
   if (error) return <div className="screen"><p className="warn">{error}</p></div>

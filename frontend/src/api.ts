@@ -3,9 +3,15 @@ export const API = import.meta.env.VITE_API_URL ?? '/api'
 export type View = 'top' | 'side' | 'closeup'
 export type Photos = Record<View, Blob>
 
+/** Backend errors carry a human-readable `detail` (rate limit, daily budget, bad input). */
+async function errorOf(r: Response) {
+  const text = await r.text()
+  try { return new Error(JSON.parse(text).detail) } catch { return new Error(`${r.status}: ${text}`) }
+}
+
 export async function postForm<T>(path: string, form: FormData): Promise<T> {
   const r = await fetch(API + path, { method: 'POST', body: form })
-  if (!r.ok) throw new Error(`${path}: ${r.status} ${await r.text()}`)
+  if (!r.ok) throw await errorOf(r)
   return r.json()
 }
 
@@ -50,6 +56,7 @@ export type GenEvent =
   | { type: 'code'; n: number; reasoning: string | null; code: string }
   | ({ type: 'verify'; n: number } & VerifyResult)
   | { type: 'done'; ok: boolean; attempts: number; stl_url?: string }
+  | { type: 'error'; message: string }
 
 /** POST + read the server-sent event stream (EventSource can't POST). */
 export async function generate(fix: string, params: Record<string, number>, onEvent: (e: GenEvent) => void) {
@@ -58,7 +65,7 @@ export async function generate(fix: string, params: Record<string, number>, onEv
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ fix, params }),
   })
-  if (!r.ok || !r.body) throw new Error(`/generate: ${r.status} ${await r.text()}`)
+  if (!r.ok || !r.body) throw await errorOf(r)
   const reader = r.body.pipeThrough(new TextDecoderStream()).getReader()
   let buf = ''
   for (;;) {

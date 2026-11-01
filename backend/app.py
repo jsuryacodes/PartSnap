@@ -1,18 +1,52 @@
 """PartSnap API. Run: .venv/bin/uvicorn app:app --port 8000 (frontend proxies /api here)."""
 import inspect
 import json
+import os
 import re
+import time
+from collections import defaultdict, deque
 from pathlib import Path
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
 import models
 import spark_cad
 from fixes import FIXES
+from verify import OUT_DIR
 
 app = FastAPI(title="PartSnap")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[o for o in os.getenv("FRONTEND_ORIGIN", "").split(",") if o],  # the Vercel domain
+    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?",
+    allow_methods=["GET", "POST"],
+    allow_headers=["content-type"],
+)
+
+BUDGET_MSG = "PartSnap has hit today's limit on AI calls (it's a hackathon demo on a budget). Please try again tomorrow!"
+GEN_PER_HOUR = int(os.getenv("GENERATIONS_PER_HOUR", "5"))
+_gens: dict[str, deque] = defaultdict(deque)
+
+
+@app.exception_handler(models.BudgetExceeded)
+def _budget(_req, _exc):
+    return JSONResponse({"detail": BUDGET_MSG}, status_code=429)
+
+
+def _rate_limit(request: Request):
+    """Per-IP sliding window on /generate."""
+    # ponytail: in-memory, so it assumes one container (modal_app sets max_containers=1)
+    ip = (request.headers.get("x-forwarded-for") or (request.client.host if request.client else "?")).split(",")[0].strip()
+    now, q = time.time(), _gens[ip]
+    while q and q[0] < now - 3600:
+        q.popleft()
+    if len(q) >= GEN_PER_HOUR:
+        wait = int((q[0] + 3600 - now) / 60) + 1
+        raise HTTPException(429, f"You've made {GEN_PER_HOUR} parts this hour. Please try again in about {wait} min.")
+    q.append(now)
 
 MAX_PHOTO = 10 * 1024 * 1024
 VIEWS = {
@@ -84,7 +118,7 @@ class GenerateReq(BaseModel):
 
 
 @app.post("/generate")
-def generate(req: GenerateReq):
+def generate(req: GenerateReq, request: Request):
     """Server-sent events: attempt / code / verify per attempt, then done."""
     mod = FIXES.get(req.fix)
     if mod is None:
@@ -93,19 +127,25 @@ def generate(req: GenerateReq):
         raise HTTPException(400, f"params must be exactly {sorted(mod.PARAMS)}")
     if not all(0 < v <= 1000 for v in req.params.values()) or req.params.get("clearance", 0) > 2:
         raise HTTPException(400, "measurements must be in (0, 1000] mm and clearance at most 2 mm")
+    _rate_limit(request)
 
     def events():
-        for e in spark_cad.run(req.fix, req.params):
-            if e.get("stl_path"):  # never send server paths; done carries the download URL
-                e["stl_url"] = f"/stl/{Path(e.pop('stl_path')).name}"
-            yield f"data: {json.dumps(e)}\n\n"
+        try:
+            for e in spark_cad.run(req.fix, req.params):
+                if e.get("stl_path"):  # never send server paths; done carries the download URL
+                    e["stl_url"] = f"/stl/{Path(e.pop('stl_path')).name}"
+                yield f"data: {json.dumps(e)}\n\n"
+        except models.BudgetExceeded:
+            yield f"data: {json.dumps({'type': 'error', 'message': BUDGET_MSG})}\n\n"
+        except Exception as ex:  # the stream has already started, so report errors as an event
+            yield f"data: {json.dumps({'type': 'error', 'message': f'Generation failed: {ex}'})}\n\n"
 
     return StreamingResponse(events(), media_type="text/event-stream", headers={"Cache-Control": "no-cache"})
 
 
 @app.get("/stl/{name}")
 def stl(name: str):
-    path = Path(__file__).parent / "out" / name
+    path = OUT_DIR / name
     if not re.fullmatch(r"[\w-]+\.stl", name) or not path.exists():
         raise HTTPException(404)
     return FileResponse(path, media_type="model/stl", filename="partsnap-fix.stl")
