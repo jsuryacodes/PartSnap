@@ -1,0 +1,7 @@
+cadquery
+trimesh
+manifold3d
+fastapi
+uvicorn
+httpx
+python-dotenv
