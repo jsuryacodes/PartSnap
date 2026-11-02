@@ -6,6 +6,7 @@ export type Params = Record<string, number>
 type Pt = [number, number]
 
 const VIEW_NAME: Record<View, string> = { top: 'Top view', side: 'Side view', closeup: 'Close-up' }
+const VIEWS = Object.keys(VIEW_NAME) as View[]
 
 function useSize<T extends HTMLElement>() {
   const ref = useRef<T>(null)
@@ -62,8 +63,8 @@ function DimPhoto({ view, src, d, values }: { view: View; src?: string; d: Diagn
               <line x1="0" y1="0" x2="0" y2="6" stroke="var(--accent)" strokeWidth="2" />
             </pattern>
           </defs>
-          {d.damage?.photo === view && (
-            <polygon className="damage" fill={`url(#hatch-${view})`} points={d.damage.polygon.map((p) => px(p).join(',')).join(' ')} />
+          {d.outlines[view] && (
+            <polygon className="damage" fill={`url(#hatch-${view})`} points={d.outlines[view].map((p) => px(p).join(',')).join(' ')} />
           )}
           {dims.map(([m, n]) => <Dim key={m.key} a={px(m.line[0])} b={px(m.line[1])} n={n} value={values[m.key] ?? ''} w={w} h={h} />)}
         </svg>
@@ -109,7 +110,7 @@ export default function Measure({ photos, onDone }: { photos: Photos; onDone: (d
 
   const keys = [...d.measurements.map((m) => m.key), ...Object.keys(d.settings)]
   const valid = keys.every((k) => Number(values[k]) > 0)
-  const shownPhotos = [...new Set([d.damage?.photo, ...d.measurements.map((m) => m.photo)].filter(Boolean))] as View[]
+  const shownPhotos = VIEWS.filter((v) => d.outlines[v] || d.measurements.some((m) => m.photo === v))
   const set = (k: string, v: string) => setValues({ ...values, [k]: v })
   const filled = d.measurements.filter((m) => Number(values[m.key]) > 0).length
 

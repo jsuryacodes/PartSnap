@@ -28,10 +28,11 @@ export type Diagnosis = {
   fix_type: string
   title: string
   explanation: string
-  damage?: { photo: View; polygon: Pt[] }
+  outlines: Partial<Record<View, Pt[]>> // SAM 3.1, 0–1 image coordinates
   measurements: Measurement[]
   settings: Record<string, number>
   param_help: Record<string, string>
+  shape: unknown // passed back to /generate untouched; the backend turns the outlines into mm
   by: { diagnosis: string; segmentation: string }
 }
 
@@ -49,21 +50,23 @@ export type VerifyResult = {
   bbox?: number[]
   expected_bbox?: number[]
   interference_volume?: number
-  gaps?: Record<string, number>
+  gaps?: { face: string; gap: number; area: number }[] // one per mating face the piece faces
+  gap?: { min: number; typical: number; max: number } | null // typical: area-weighted median
+  fill_ratio?: number // piece volume / missing volume, for fixes that replace what broke off
 }
 export type GenEvent =
   | { type: 'attempt'; n: number; by: string }
   | { type: 'code'; n: number; reasoning: string | null; code: string }
   | ({ type: 'verify'; n: number } & VerifyResult)
-  | { type: 'done'; ok: boolean; attempts: number; stl_url?: string }
+  | { type: 'done'; ok: boolean; attempts: number; stl_url?: string; mate_url?: string }
   | { type: 'error'; message: string }
 
 /** POST + read the server-sent event stream (EventSource can't POST). */
-export async function generate(fix: string, params: Record<string, number>, onEvent: (e: GenEvent) => void) {
+export async function generate(fix: string, params: Record<string, number>, shape: unknown, onEvent: (e: GenEvent) => void) {
   const r = await fetch(API + '/generate', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ fix, params }),
+    body: JSON.stringify({ fix, params, shape }),
   })
   if (!r.ok || !r.body) throw await errorOf(r)
   const reader = r.body.pipeThrough(new TextDecoderStream()).getReader()

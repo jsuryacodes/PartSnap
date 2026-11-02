@@ -19,7 +19,8 @@ Reply with one ```python code block and nothing else."""
 
 def _prompt(fix, params):
     mod = FIXES[fix]
-    lines = "\n".join(f"- {k} = {params[k]}  ({desc})" for k, desc in mod.PARAMS.items())
+    descs = {**mod.PARAMS, **getattr(mod, "OUTLINES", {})}
+    lines = "\n".join(f"- {k} = {params[k]}  ({desc})" for k, desc in descs.items())
     return f"Fix type: {fix}\n{mod.__doc__.strip()}\n\nMeasurements:\n{lines}"
 
 
@@ -33,14 +34,14 @@ def run(fix: str, params: dict):
     for n in range(1, MAX_ATTEMPTS + 1):
         yield {"type": "attempt", "n": n, "by": BY}
         resp = models.call("baseten", {"model": models.SPARK_OPEN, "messages": messages},
-                           mock="spark_cad", mock_vars=params)
+                           mock=f"spark_cad_{fix}", mock_vars=params)
         msg = resp["choices"][0]["message"]
         code = _code(msg["content"])
         yield {"type": "code", "n": n, "reasoning": msg.get("reasoning_content"), "code": code}
         result = verify(code, fix, params)
         yield {"type": "verify", "n": n, **result}
         if result["ok"]:
-            yield {"type": "done", "ok": True, "stl_path": result["stl_path"], "attempts": n}
+            yield {"type": "done", "ok": True, "stl_path": result["stl_path"], "mate_path": result["mate_path"], "attempts": n}
             return
         messages += [{"role": "assistant", "content": msg["content"]},
                      {"role": "user", "content": f"That code failed verification:\n{result['error']}\n"
@@ -49,12 +50,16 @@ def run(fix: str, params: dict):
 
 
 if __name__ == "__main__":
-    p = dict(edge_thickness=18, reach_x=40, reach_y=40, wall=2.5, clearance=0.2)
-    events = []
-    for e in run("corner_cap", p):
-        events.append(e)
-        print({k: v for k, v in e.items() if k != "code"})
-    verifies = [e for e in events if e["type"] == "verify"]
-    if models.MOCK_MODE:  # the mock's first attempt is deliberately wrong, so this exercises repair
-        assert events[-1]["ok"] and len(verifies) == 2 and not verifies[0]["ok"]
+    from fixes import chip_fill
+
+    for fix, p in (("chip_fill", chip_fill.example()),
+                   ("corner_cap", dict(edge_thickness=18, reach_x=40, reach_y=40, wall=2.5, clearance=0.2))):
+        events = []
+        for e in run(fix, p):
+            events.append(e)
+            print(fix, {k: v for k, v in e.items() if k not in ("code", "gaps")})
+        verifies = [e for e in events if e["type"] == "verify"]
+        if models.MOCK_MODE:  # each mock's first attempt is deliberately wrong, so this exercises repair
+            assert events[-1]["ok"] and len(verifies) == 2 and not verifies[0]["ok"], fix
+    if models.MOCK_MODE:
         print("mock repair loop check passed")

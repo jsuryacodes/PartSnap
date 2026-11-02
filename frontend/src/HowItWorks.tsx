@@ -14,7 +14,7 @@ type Geos = { table: THREE.BufferGeometry; damage: THREE.BufferGeometry; cap: TH
 const [T, RX, RY, W, C] = [18, 40, 40, 2, 0.2]
 const VERIFY: VerifyResult = {
   ok: true, error: null, watertight: true, bodies: 1, bbox: [42.2, 42.2, 22.4], expected_bbox: [42.2, 42.2, 22.4],
-  interference_volume: 0, gaps: { '-x': 0.2, '-y': 0.2, '-z': 0.2, '+z': 0.2 },
+  interference_volume: 0, gaps: (['-x', '-y', '-z', '+z'] as const).map((face) => ({ face, gap: 0.2, area: 0 })),
 }
 
 // The passing Muse Spark Open answer in backend/mocks/spark_cad.json at those values, wrapped to fit a phone.
@@ -268,7 +268,7 @@ function overlay(s: number, proj: (p: V3) => Pt, w: number, h: number) {
     if (op < 0.01) return
     const p = proj(at), dx = p[0] - mid[0], dy = p[1] - mid[1], len = Math.hypot(dx, dy) || 1
     const q: Pt = [p[0] + (dx / len) * 54, p[1] + (dy / len) * 54]
-    out += g(op, line('ld', p, q) + dot(p) + tag(q[0], q[1], `${name} ${VERIFY.gaps![face].toFixed(2)} mm`, '✓'))
+    out += g(op, line('ld', p, q) + dot(p) + tag(q[0], q[1], `${name} ${VERIFY.gaps!.find((g) => g.face === face)!.gap.toFixed(2)} mm`, '✓'))
   })
   out += g(ramp(5.56, 5.64, s) * fit, tag(14, 22, `OVERLAP ${VERIFY.interference_volume!.toFixed(3)} mm³`, '✓', true)
     + tag(14, 48, `WATERTIGHT · ${VERIFY.bodies} BODY`, '✓', true))

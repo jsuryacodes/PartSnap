@@ -11,9 +11,11 @@ Meta Global AI Developer Hackathon (Indie, solo). Deadline: Wed Nov 4 2026, 10 P
 ```
 backend/
   fixes/          one module per fix type (make, expected_bbox, mating_solid, PARAMS); registry in __init__.py
-  verify.py       sandboxed run + watertight / bbox / interference checks + STL export
+    chip_fill.py  default: the exact missing piece, from SAM's top + side outlines (outlines_mm, missing_solid)
+    corner_cap.py a cover that slides over the corner
+  verify.py       sandboxed run + watertight / bbox / overlap / gap / fill-ratio checks + STL export (piece + mating object)
   models.py       all model calls: MOCK_MODE, disk cache, token logging
-  mocks/          saved model responses for MOCK_MODE
+  mocks/          saved model responses for MOCK_MODE (diagnose.json is chip_fill; spark_cad_<fix>.json per fix)
   spark_cad.py    Spark Open -> CadQuery -> verify -> repair loop; run() yields progress events
   app.py          FastAPI: /check-photo, /diagnose, /generate (SSE), /stl/{name}
   export_how_it_works.py  writes frontend/public/hiw/*.stl (real cap via verify.py + chipped table); re-run if corner_cap changes
@@ -37,6 +39,7 @@ HTTP=1 npx vite --port 5174               # plain HTTP for desktop browser testi
 - API keys live only in `backend/.env` (gitignored). Never in the browser.
 - Every model call goes through `models.py` (cache + mock + usage log). `MOCK_MODE=1` by default.
 - Spark Open on Baseten: model `meta-models/muse-spark-open-1026` (NOT `meta-models/muse-spark-open`).
-- MVP has ONE fix type: `corner_cap`. Don't build others yet.
+- Fix types: `chip_fill` (default for chipped corners/edges) and `corner_cap`. Don't add others yet.
+- chip_fill outlines start at the corner, run along one face, follow the break, end on the other face (see its docstring).
 - Units are millimetres.
 - Commit after each working step with a clear message, then push. No Co-Authored-By trailers.

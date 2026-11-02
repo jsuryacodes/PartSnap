@@ -4,11 +4,11 @@ import type { Params } from './Measure'
 import { ModelTag } from './ui'
 
 type Attempt = { n: number; by: string; reasoning?: string | null; code?: string; verify?: VerifyResult }
-export type Done = { stl_url: string; verify: VerifyResult; attempts: number }
+export type Done = { stl_url: string; mate_url?: string; verify: VerifyResult; attempts: number }
 
 const pad = (n: number) => String(n).padStart(2, '0')
 
-export default function Generate({ fix, params, onDone }: { fix: string; params: Params; onDone: (d: Done) => void }) {
+export default function Generate({ fix, params, shape, onDone }: { fix: string; params: Params; shape: unknown; onDone: (d: Done) => void }) {
   const [attempts, setAttempts] = useState<Attempt[]>([])
   const [done, setDone] = useState<(GenEvent & { type: 'done' }) | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -17,7 +17,7 @@ export default function Generate({ fix, params, onDone }: { fix: string; params:
   useEffect(() => {
     if (started.current) return // StrictMode runs effects twice in dev; generate once
     started.current = true
-    generate(fix, params, (e) => {
+    generate(fix, params, shape, (e) => {
       if (e.type === 'done') return setDone(e)
       if (e.type === 'error') return setError(e.message)
       setAttempts((a) => {
@@ -46,7 +46,7 @@ export default function Generate({ fix, params, onDone }: { fix: string; params:
       {done && !done.ok && <p className="notice">Failed inspection after {done.attempts} attempts. Check the measurements and try again.</p>}
       {done?.ok && done.stl_url && last && (
         <div className="cta-bar">
-          <button className="btn btn-primary btn-block" onClick={() => onDone({ stl_url: done.stl_url!, verify: last, attempts: done.attempts })}>
+          <button className="btn btn-primary btn-block" onClick={() => onDone({ stl_url: done.stl_url!, mate_url: done.mate_url, verify: last, attempts: done.attempts })}>
             View part &amp; download <span className="arrow">→</span>
           </button>
         </div>
@@ -85,17 +85,25 @@ function AttemptCard({ a, clearance }: { a: Attempt; clearance: number }) {
   )
 }
 
+/** The inspector's rows; mirrors the rules in backend/verify.py. */
 export function Checks({ v, clearance }: { v: VerifyResult; clearance: number }) {
   if (v.watertight === undefined) return <p className="err">{v.error}</p> // code crashed before any geometry
   const bboxOk = v.bbox!.every((x, i) => Math.abs(x - v.expected_bbox![i]) <= 0.2)
   const fmt = (xs: number[]) => xs.map((x) => x.toFixed(1)).join(' × ')
+  const nominal = `nominal ${clearance.toFixed(2)} ±0.10`
+  const fill = v.fill_ratio // only fixes that replace what broke off; their small break features may sit looser
+  const gapRows: [boolean, string, string, string?][] = fill === undefined
+    ? (v.gaps ?? []).map((g) => [Math.abs(g.gap - clearance) <= 0.1, `Clearance, face ${g.face}`, `${g.gap.toFixed(2)} mm`, nominal])
+    : v.gap ? [[v.gap.min >= clearance - 0.1 && Math.abs(v.gap.typical - clearance) <= 0.1, 'Gap to the break',
+        `${v.gap.typical.toFixed(2)} mm`, `${v.gap.min.toFixed(2)}–${v.gap.max.toFixed(2)} on ${v.gaps!.length} faces · ${nominal}`]] : []
   const rows: [boolean, string, string, string?][] = [
     [v.watertight! && v.bodies === 1, 'Watertight, single body', v.watertight ? `${v.bodies} body` : 'open mesh'],
     [bboxOk, 'Overall size', `${fmt(v.bbox!)}`, `nominal ${fmt(v.expected_bbox!)}`],
-    [v.interference_volume! <= 1e-6, 'Overlap with table', `${v.interference_volume!.toFixed(3)} mm³`],
-    ...Object.entries(v.gaps ?? {}).map(([face, g]): [boolean, string, string, string] =>
-      [Math.abs(g - clearance) <= 0.1, `Clearance, face ${face}`, `${g.toFixed(2)} mm`, `nominal ${clearance.toFixed(2)} ±0.10`]),
+    [v.interference_volume! <= 1e-6, fill === undefined ? 'Overlap with table' : 'Overlap with the wood', `${v.interference_volume!.toFixed(3)} mm³`],
+    ...gapRows,
+    ...(fill === undefined ? [] : [[fill >= 0.9 && fill <= 1, 'Fill ratio', `${(fill * 100).toFixed(1)}%`, 'of the missing volume · 90–100%'] as [boolean, string, string, string]]),
   ]
+  const notes = v.error?.split('; ') ?? []
   return (
     <>
       <ul className="checklist">
@@ -107,7 +115,12 @@ export function Checks({ v, clearance }: { v: VerifyResult; clearance: number })
           </li>
         ))}
       </ul>
-      {v.error && <p className="err">{v.error}</p>}
+      {notes.length > 0 && (
+        <details className="panel notes" open={notes.length < 3}>
+          <summary>Inspector’s notes <span className="mono" style={{ fontSize: 11, color: 'var(--muted)' }}>{notes.length}</span></summary>
+          <ul>{notes.map((n) => <li key={n}>{n}</li>)}</ul>
+        </details>
+      )}
     </>
   )
 }
