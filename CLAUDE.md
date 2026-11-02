@@ -18,7 +18,7 @@ backend/
   mocks/          saved model responses for MOCK_MODE (diagnose.json is chip_fill; spark_cad_<fix>.json per fix)
   spark_cad.py    Spark Open -> CadQuery -> verify -> repair loop; run() yields progress events
   app.py          FastAPI: /check-photo, /diagnose, /generate (SSE), /stl/{name}
-  export_how_it_works.py  writes frontend/public/hiw/*.stl (real cap via verify.py + chipped table); re-run if corner_cap changes
+  export_how_it_works.py  writes frontend/public/hiw/*.stl + src/hiw.json (real chip_fill piece, table, prisms via verify.py); re-run if chip_fill or mocks/diagnose.json change
 frontend/src/
   Landing -> Capture -> Measure -> Generate -> Result   one component per screen; api.ts holds all fetches
   HowItWorks.tsx  /how-it-works: lazy-loaded scroll-driven three.js explainer; still frames under reduced motion

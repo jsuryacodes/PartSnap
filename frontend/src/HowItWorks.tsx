@@ -3,51 +3,36 @@ import * as THREE from 'three'
 import { STLLoader } from 'three/addons/loaders/STLLoader.js'
 import type { VerifyResult } from './api'
 import { Checks } from './Generate'
+import HIW from './hiw.json'
 import { ArrowDefs, ModelTag } from './ui'
 
 type V3 = [number, number, number]
 type Pt = [number, number]
-type Geos = { table: THREE.BufferGeometry; damage: THREE.BufferGeometry; cap: THREE.BufferGeometry }
+const PARTS = ['table', 'piece', 'prism_top', 'prism_side'] as const
+type Geos = Record<(typeof PARTS)[number], THREE.BufferGeometry>
 
-// The app's default corner cap: the diagnosis examples plus make()'s wall and clearance.
-// backend/export_how_it_works.py exports public/hiw/*.stl at these values; VERIFY is what verify.py reported.
-const [T, RX, RY, W, C] = [18, 40, 40, 2, 0.2]
-const VERIFY: VerifyResult = {
-  ok: true, error: null, watertight: true, bodies: 1, bbox: [42.2, 42.2, 22.4], expected_bbox: [42.2, 42.2, 22.4],
-  interference_volume: 0, gaps: (['-x', '-y', '-z', '+z'] as const).map((face) => ({ face, gap: 0.2, area: 0 })),
-}
-
-// The passing Muse Spark Open answer in backend/mocks/spark_cad.json at those values, wrapped to fit a phone.
-const CODE = `import cadquery as cq
-t, rx, ry, w, c = 18, 40, 40, 2.0, 0.2
-
-outer = (cq.Workplane()
-  .box(rx+c+w, ry+c+w, t+2*(c+w),
-       centered=False)
-  .translate((-c-w, -c-w, -c-w)))
-
-pocket = (cq.Workplane()
-  .box(rx+c+1, ry+c+1, t+2*c,
-       centered=False)
-  .translate((-c, -c, -c)))
-
-result = outer.cut(pocket)`
+// The app's default missing piece: the mock diagnosis's SAM outlines and example measurements, plus the default
+// clearance. backend/export_how_it_works.py builds it through verify.py and writes public/hiw/*.stl and hiw.json.
+const { t: T, d: D, c: C } = HIW
+const VERIFY: VerifyResult = HIW.verify
+const CODE = HIW.code // the passing Muse Spark Open answer at these values, wrapped to fit a phone
+const LIFT = 28 // the piece is built this far above the chip, then slides down into it
 
 const STEPS: { title: string; sheet: string; body: string; tags?: string[] }[] = [
   { title: 'Something broke.', sheet: 'Broken corner',
-    body: 'A chipped corner on a perfectly good table. Too small a reason to replace the table, too fiddly to model a fix in CAD yourself.' },
+    body: 'A chunk knocked off the corner of a perfectly good table. Too small a reason to replace the table, too fiddly to model the missing piece in CAD yourself.' },
   { title: 'Snap three photos.', sheet: 'Capture', tags: ['Muse Spark'],
     body: 'A shot list walks you through a top view, a side view and a close-up of the damage. A live level keeps each shot square, and Muse Spark checks every photo before you move on.' },
-  { title: 'SAM 3.1 finds the damage.', sheet: 'Segmentation', tags: ['SAM 3.1', 'Muse Spark'],
-    body: 'SAM 3.1 outlines the chip in your photos. Muse Spark reads all three shots, picks the fix (here, a corner cap) and works out which measurements it needs.' },
-  { title: 'Measure only what matters.', sheet: 'Measurements',
-    body: 'The app marks exactly where to put the ruler. Three numbers: the tabletop thickness, and how far the cap should reach along each edge. Wall and clearance come pre-filled.' },
-  { title: 'Muse Spark Open writes the CAD.', sheet: 'CAD generation', tags: ['Muse Spark Open'],
-    body: 'Your measurements go to Muse Spark Open, which writes CadQuery code for the part, like this. Running the code builds the solid.' },
-  { title: 'Checked before you print.', sheet: 'Inspection',
-    body: 'Every attempt is built and inspected against your measurements. If a check fails, the inspector’s notes go back to the model for another try, up to three attempts.' },
-  { title: 'Print it. It fits.', sheet: 'Ready to print',
-    body: 'Preview the part in 3D, download the STL and print it. The cap slides over the corner and covers the chip.' },
+  { title: 'SAM 3.1 outlines what’s missing.', sheet: 'Segmentation', tags: ['SAM 3.1', 'Muse Spark'],
+    body: 'SAM 3.1 outlines the missing area in the top view and in the side view. Muse Spark reads all three shots, picks the fix (here, the missing piece itself) and works out what to measure.' },
+  { title: 'Measure two things.', sheet: 'Measurements',
+    body: 'The app marks exactly where to put the ruler. The tabletop thickness is the one reference that scales both outlines to millimetres, and the chip depth sets how deep the piece goes. Clearance comes pre-filled.' },
+  { title: 'Muse Spark Open builds the missing piece.', sheet: 'CAD generation', tags: ['Muse Spark Open'],
+    body: 'The outlines go to Muse Spark Open, which writes CadQuery like this: extrude the top outline down and the side outline across, keep where they overlap, then shrink it 0.2 mm so it slides in, flattening break features under 1 mm.' },
+  { title: 'Checked against the break.', sheet: 'Inspection',
+    body: 'Every attempt is built and inspected against the damaged corner: one watertight body, no overlap with the wood, a gap close to 0.2 mm all round, and at least 90% of the missing volume filled. If a check fails, the inspector’s notes go back to the model, up to three attempts.' },
+  { title: 'The corner is whole again.', sheet: 'Ready to print',
+    body: 'Download the STL, print it top face down and glue it into the chip with epoxy. It sits flush with the tabletop and both edges.' },
 ]
 
 // ---- timeline: everything is a function of s, the scroll position in steps (step k spans k..k+1) ----
@@ -60,25 +45,26 @@ const win = (a: number, b: number, c: number, d: number, x: number) => ramp(a, b
 const pad = (n: number) => String(n).padStart(2, '0')
 
 // s, azimuth°, elevation°, distance, target xyz. CadQuery frame: Z up, table corner at the origin, table at x, y >= 0.
+const OPENING = [235, 26, 165, 14, 14, 4]
 const CAM = [
-  [0.00, 235, 26, 165, 14, 14, 4],
-  [0.80, 235, 26, 165, 14, 14, 4],
+  [0.00, ...OPENING],
+  [0.80, ...OPENING],
   [1.06, 360, 88, 150, 20, 20, 9], // shot 1: top, corner top-left like the app's guide frame
   [1.22, 360, 88, 150, 20, 20, 9],
   [1.34, 270, 3, 140, 26, 0, 9], // shot 2: side, level with the tabletop
   [1.46, 270, 3, 140, 26, 0, 9],
-  [1.58, 225, 34, 64, 4, 4, 14], // shot 3: close-up of the chip
-  [1.74, 225, 34, 64, 4, 4, 14],
-  [2.10, 228, 42, 100, 6, 6, 12], // segmentation
-  [2.95, 228, 42, 100, 6, 6, 12],
-  [3.12, 235, 30, 190, 22, 22, 6], // measurements
-  [3.95, 235, 30, 190, 22, 22, 6],
-  [4.12, 300, 24, 230, -10, 14, 6], // CAD: built beside the corner, open end toward you
-  [5.02, 300, 24, 230, -10, 14, 6],
-  [5.32, 300, 24, 200, 10, 14, 6], // slides on along +x
-  [5.46, 240, 24, 175, 16, 16, 8], // inspection: both end walls in view
-  [6.00, 240, 24, 175, 16, 16, 8],
-  [6.25, 145, 20, 155, 14, 18, 5], // hero: the open end shows the cap's section around the tabletop
+  [1.58, 225, 34, 100, 11, 9, 13], // shot 3: close-up of the chip
+  [1.74, 225, 34, 100, 11, 9, 13],
+  [2.10, 240, 32, 125, 13, 9, 12], // segmentation: both outlines in view
+  [2.95, 240, 32, 125, 13, 9, 12],
+  [3.12, 248, 20, 175, 25, 8, 7], // measurements: the front face
+  [3.95, 248, 20, 175, 25, 8, 7],
+  [4.12, 235, 20, 170, 12, 10, 26], // CAD: built above the chip
+  [5.02, 235, 20, 170, 12, 10, 26],
+  [5.32, 235, 32, 115, 12, 10, 13], // slides down into it
+  [5.46, 235, 32, 115, 12, 10, 13], // inspection
+  [6.00, 235, 32, 115, 12, 10, 13],
+  [6.25, ...OPENING], // the opening shot, whole again
 ]
 function cam(s: number) {
   let i = 0
@@ -87,23 +73,19 @@ function cam(s: number) {
   return a.map((v, k) => v + (b[k] - v) * u)
 }
 
-const TYPE = [4.1, 4.58] // the code types out over this range of s
-const BUILD_X = -50 // the cap is built this far along -x, then slides on
+const TYPE = [4.1, 4.62] // the code types out over this range of s
 const SHOTS: [number, number, V3, V3, string][] = [ // hold from, hold to, region framed, label
   [1.06, 1.22, [0, 0, 0], [44, 44, T], 'TOP VIEW · LEVEL ✓'],
   [1.34, 1.46, [0, 0, 0], [60, 0, T], 'SIDE VIEW · LEVEL ✓'],
-  [1.58, 1.74, [-1, -1, 11], [13, 12, T], 'CLOSE-UP'],
+  [1.58, 1.74, [-1, -1, T - D - 1], [27, 22, T], 'CLOSE-UP'],
 ]
-const DIMS: [V3, V3, V3, number][] = [ // from, to, offset direction, value: the three numbers the app asks for
-  [[54, 0, 0], [54, 0, T], [0, -1, 0], T],
-  [[0, 0, T], [RX, 0, T], [0, -1, 0], RX],
-  [[0, 0, T], [0, RY, T], [-1, 0, 0], RY],
+const OUTLINE_TAGS: [number, V3, Pt, string][] = [ // shows from, a point inside the outline, leader, label
+  [2.12, [17, 5, T], [46, -48], 'TOP OUTLINE · SAM 3.1'],
+  [2.34, [9, 0, T - 2.5], [-30, 54], 'SIDE OUTLINE · SAM 3.1'],
 ]
-const GAPS: [string, string, V3][] = [ // verify.py face, label, a point on the cap over that mating face
-  ['+z', 'TOP', [26, 26, T + C + W]],
-  ['-x', 'END A', [-C - W, 26, T / 2]],
-  ['-y', 'END B', [26, -C - W, T / 2]],
-  ['-z', 'UNDERSIDE', [8, -C - W, -C - W]],
+const DIMS: [V3, V3, V3, number][] = [ // from, to, offset direction, value: the two numbers the app asks for
+  [[50, 0, 0], [50, 0, T], [0, -1, 0], T],
+  [[0, 0, T - D], [0, 0, T], [0, -1, 0], D],
 ]
 const STILL = [0.5, 1.18, 2.6, 3.8, 4.9, 5.8, 6.6] // a resting moment in each step, for reduced motion
 
@@ -111,8 +93,8 @@ const STILL = [0.5, 1.18, 2.6, 3.8, 4.9, 5.8, 6.6] // a resting moment in each s
 
 const INK = 0x191917, ACCENT = 0xff5b14, DEG = Math.PI / 180
 const loadGeos = (): Promise<Geos> =>
-  Promise.all(['table', 'damage', 'cap'].map((n) => new STLLoader().loadAsync(`/hiw/${n}.stl`)))
-    .then(([table, damage, cap]) => ({ table, damage, cap }))
+  Promise.all(PARTS.map((n) => new STLLoader().loadAsync(`/hiw/${n}.stl`)))
+    .then((g) => Object.fromEntries(PARTS.map((n, i) => [n, g[i]])) as Geos)
 
 function makeScene(geo: Geos) {
   const scene = new THREE.Scene()
@@ -130,10 +112,11 @@ function makeScene(geo: Geos) {
   const table = new THREE.Mesh(geo.table, new THREE.MeshStandardMaterial({ color: 0xe9e2d2, roughness: 1 }))
   table.add(outline(geo.table))
 
-  // SAM 3.1's mask: the broken faces in a screen-space hatch, like the damage outline on the measure screen.
-  const maskMat = new THREE.ShaderMaterial({
+  // SAM 3.1's outlines where they were seen, the top one on the tabletop and the side one on the front face,
+  // hatched in screen space like the outlines on the measure screen.
+  const hatch = new THREE.ShaderMaterial({
     uniforms: { opacity: { value: 0 }, dpr: { value: 1 } },
-    transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
+    transparent: true, depthWrite: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
     vertexShader: 'void main() { gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
     fragmentShader: `uniform float opacity; uniform float dpr;
       void main() {
@@ -141,32 +124,42 @@ function makeScene(geo: Geos) {
         gl_FragColor = vec4(1.0, 0.357, 0.078, opacity * mix(0.35, 1.0, on));
       }`,
   })
-  const mask = new THREE.Mesh(geo.damage, maskMat)
-  const maskLine = outline(geo.damage, ACCENT)
-  mask.add(maskLine)
+  const flat = (pts: number[][]) => {
+    const mat = hatch.clone()
+    const mesh = new THREE.Mesh(new THREE.ShapeGeometry(new THREE.Shape(pts.map(([x, y]) => new THREE.Vector2(x, y)))), mat)
+    const line = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(pts.map(([x, y]) => new THREE.Vector3(x, y, 0))),
+      new THREE.LineBasicMaterial({ color: ACCENT, transparent: true }))
+    mesh.add(line)
+    return { mesh, mat, line }
+  }
+  const topOutline = flat(HIW.top), sideOutline = flat(HIW.side)
+  topOutline.mesh.position.z = T + 0.05
+  sideOutline.mesh.rotation.x = Math.PI / 2 // its (x, z) points onto the y = 0 face
+  sideOutline.mesh.position.y = -0.05
 
-  // The cap, plus the two boxes the code cuts it from, shown while it types.
-  const capMat = new THREE.MeshStandardMaterial({ color: ACCENT, roughness: 0.6, transparent: true })
-  const cap = new THREE.Mesh(geo.cap, capMat)
-  const capLine = outline(geo.cap)
-  cap.add(capLine)
-  const box = (sx: number, sy: number, sz: number, x0: number, y0: number, z0: number) =>
-    new THREE.BoxGeometry(sx, sy, sz).translate(x0 + sx / 2, y0 + sy / 2, z0 + sz / 2)
-  const outerGeo = box(RX + C + W, RY + C + W, T + 2 * (C + W), -C - W, -C - W, -C - W)
-  const outerMat = new THREE.MeshStandardMaterial({ color: ACCENT, roughness: 0.6, transparent: true, depthWrite: false })
-  const outer = new THREE.Mesh(outerGeo, outerMat)
-  const outerLine = outline(outerGeo)
-  outer.add(outerLine)
-  const pocket = new THREE.LineSegments(new THREE.EdgesGeometry(box(RX + C + 1, RY + C + 1, T + 2 * C, -C, -C, -C)),
-    new THREE.LineDashedMaterial({ color: INK, dashSize: 2.5, gapSize: 1.6, transparent: true }))
-  pocket.computeLineDistances()
-  const capGroup = new THREE.Group()
-  capGroup.add(cap, outer, pocket)
-  root.add(table, mask, capGroup)
+  // The two prisms the code extrudes, each growing from its workplane, and the piece they intersect into.
+  const prism = (g: THREE.BufferGeometry, axis: 'y' | 'z') => {
+    g.computeBoundingBox()
+    const base = g.boundingBox!.min[axis]
+    g.translate(0, axis === 'y' ? -base : 0, axis === 'z' ? -base : 0)
+    const mat = new THREE.MeshStandardMaterial({ color: ACCENT, roughness: 0.6, transparent: true, depthWrite: false })
+    const mesh = new THREE.Mesh(g, mat), line = outline(g)
+    mesh.position[axis] = base
+    mesh.add(line)
+    return { mesh, mat, line }
+  }
+  const prismA = prism(geo.prism_top, 'z'), prismB = prism(geo.prism_side, 'y')
+  const pieceMat = new THREE.MeshStandardMaterial({ color: ACCENT, roughness: 0.6, transparent: true })
+  const piece = new THREE.Mesh(geo.piece, pieceMat), pieceLine = outline(geo.piece)
+  piece.add(pieceLine)
+  const build = new THREE.Group()
+  build.add(prismA.mesh, prismB.mesh, piece)
+  root.add(table, topOutline.mesh, sideOutline.mesh, build)
 
   const v = new THREE.Vector3()
   return {
-    scene, camera, maskMat,
+    scene, camera,
+    setDpr(dpr: number) { topOutline.mat.uniforms.dpr.value = sideOutline.mat.uniforms.dpr.value = dpr },
     project(p: V3, w: number, h: number): Pt {
       v.set(p[0], p[2], -p[1]).project(camera)
       return [((v.x + 1) / 2) * w, ((1 - v.y) / 2) * h]
@@ -180,23 +173,29 @@ function makeScene(geo: Geos) {
       camera.lookAt(tx, tz, -ty)
       camera.updateMatrixWorld()
 
-      const m = ramp(2.06, 2.3, s) * (1 - 0.4 * ramp(2.95, 3.1, s)) * (1 - ramp(3.96, 4.08, s))
-      mask.visible = m > 0.005
-      maskMat.uniforms.opacity.value = maskLine.material.opacity = m
-
       const typed = clamp01((s - TYPE[0]) / (TYPE[1] - TYPE[0])) * CODE.length
       const part = (from: string, to: string) => clamp01((typed - CODE.indexOf(from)) / (CODE.indexOf(to) - CODE.indexOf(from)))
-      const po = part('outer', 'pocket'), pp = part('pocket', 'result'), cut = ramp(TYPE[1] - 0.04, TYPE[1] + 0.1, s)
-      outer.visible = po > 0 && cut < 1
-      outerMat.opacity = 0.3 * po * (1 - cut)
-      outerLine.geometry.setDrawRange(0, 2 * Math.ceil(12 * po)) // the 12 box edges appear as the line types
-      outerLine.material.opacity = 1 - cut
-      pocket.visible = pp > 0 && cut < 1
-      pocket.geometry.setDrawRange(0, 2 * Math.ceil(12 * pp))
-      pocket.material.opacity = 1 - cut
-      cap.visible = cut > 0
-      capMat.opacity = capLine.material.opacity = cut
-      capGroup.position.x = BUILD_X * (1 - ramp(5.02, 5.32, s))
+      const pa = part('a = (', 'b = ('), pb = part('b = (', 'table ='), cut = ramp(TYPE[1] - 0.04, TYPE[1] + 0.1, s)
+
+      // The outlines show in step 3 (top, then side), and again while their numbers type, until their prism grows.
+      const seen = (from: number) => ramp(from, from + 0.18, s) * (1 - 0.4 * ramp(2.95, 3.1, s)) * (1 - ramp(3.96, 4.08, s))
+      const typing = (p: number, grown: number) => ramp(0, 0.15, p) * (1 - ramp(0, 0.4, grown))
+      const shown = [Math.max(seen(2.08), typing(part('top = [', 'side = ['), pa)), Math.max(seen(2.3), typing(part('side = [', '# push'), pb))]
+      ;[topOutline, sideOutline].forEach((o, i) => {
+        o.mesh.visible = shown[i] > 0.005
+        o.mat.uniforms.opacity.value = o.line.material.opacity = shown[i]
+      })
+
+      ;[prismA, prismB].forEach((p, i) => {
+        const u = i ? pb : pa, on = Math.min(1, u * 4) * (1 - cut)
+        p.mesh.visible = on > 0.005
+        p.mat.opacity = 0.3 * on
+        p.line.material.opacity = on
+        p.mesh.scale[i ? 'y' : 'z'] = Math.max(1e-3, u) // extrudes as its line types
+      })
+      piece.visible = cut > 0
+      pieceMat.opacity = pieceLine.material.opacity = cut
+      build.position.z = LIFT * (1 - ramp(5.02, 5.32, s))
       return typed
     },
   }
@@ -209,10 +208,10 @@ const boxCorners = (lo: V3, hi: V3) =>
   [0, 1, 2, 3, 4, 5, 6, 7].map((i): V3 => [i & 1 ? hi[0] : lo[0], i & 2 ? hi[1] : lo[1], i & 4 ? hi[2] : lo[2]])
 
 function overlay(s: number, proj: (p: V3) => Pt, w: number, h: number) {
-  /** Ink label, mono 11px (6.6px a character), kept inside the frame. `num` is drawn in accent. */
-  const tag = (x: number, y: number, text: string, num = '', left = false) => {
+  /** Ink label, mono 11px (6.6px a character), kept inside the frame; x is its left edge, centre or right edge. */
+  const tag = (x: number, y: number, text: string, num = '', align: 'left' | 'center' | 'right' = 'center') => {
     const tw = 6.6 * (text.length + (num ? num.length + 1 : 0)) + 14
-    const x0 = Math.min(Math.max(left ? x : x - tw / 2, 6), w - tw - 6), y0 = Math.min(Math.max(y - 10, 6), h - 26)
+    const x0 = Math.min(Math.max(x - tw * { left: 0, center: 0.5, right: 1 }[align], 6), w - tw - 6), y0 = Math.min(Math.max(y - 10, 6), h - 26)
     return `<g class="tag" transform="translate(${f(x0)},${f(y0)})"><rect width="${f(tw)}" height="20" rx="2"/>`
       + `<text x="7" y="14">${num ? `<tspan class="n">${num}</tspan> ` : ''}${text}</text></g>`
   }
@@ -232,19 +231,20 @@ function overlay(s: number, proj: (p: V3) => Pt, w: number, h: number) {
     const y0 = Math.max(36, Math.min(...ys) - m), y1 = Math.min(h - 8, Math.max(...ys) + m)
     out += g(op, `<path class="br" d="M${f(x0)} ${f(y0 + L)}V${f(y0)}H${f(x0 + L)}M${f(x1 - L)} ${f(y0)}H${f(x1)}V${f(y0 + L)}`
       + `M${f(x1)} ${f(y1 - L)}V${f(y1)}H${f(x1 - L)}M${f(x0 + L)} ${f(y1)}H${f(x0)}V${f(y1 - L)}"/>`
-      + tag(x0, y0 - 16, `SHOT ${j + 1}/3 · ${name}`, '', true))
+      + tag(x0, y0 - 16, `SHOT ${j + 1}/3 · ${name}`, '', 'left'))
   })
   out += g(win(0.97, 1.04, 1.8, 1.9, s), SHOTS.map(([a], j) => {
     const x = 14 + j * 32, cls = s > a + 0.08 ? 'th done' : s > a - 0.12 ? 'th now' : 'th'
     return `<rect class="${cls}" x="${x}" y="${h - 40}" width="26" height="26" rx="2"/><text class="thn" x="${x + 13}" y="${h - 23}">${j + 1}</text>`
   }).join(''))
 
-  // 03: the mask itself is drawn in 3D; label it
-  const sam = win(2.14, 2.3, 2.92, 3.02, s)
-  if (sam > 0.01) {
-    const p = proj([5, 4, T - 1.5]), q: Pt = [p[0] + 48, p[1] - 52]
-    out += g(sam, line('ld', p, q) + dot(p) + tag(q[0], q[1], 'DAMAGE · SAM 3.1', '', true))
-  }
+  // 03: the outlines themselves are drawn in 3D; label them
+  OUTLINE_TAGS.forEach(([a, at, [dx, dy], text]) => {
+    const op = win(a, a + 0.12, 2.92, 3.02, s)
+    if (op < 0.01) return
+    const p = proj(at), q: Pt = [p[0] + dx, p[1] + dy]
+    out += g(op, line('ld', p, q) + dot(p) + tag(q[0], q[1], text))
+  })
 
   // 04: dimension lines grow out from their middle, then the reading appears
   DIMS.forEach(([a, b, d, value], i) => {
@@ -261,17 +261,18 @@ function overlay(s: number, proj: (p: V3) => Pt, w: number, h: number) {
       + g(ramp(0.75, 1, p), tag(lx, M[1], text, String(i + 1))))
   })
 
-  // 06: clearance on each mating face, overlap, and the inspector's stamp (verify.py's numbers)
-  const fit = 1 - ramp(5.96, 6.06, s), mid = proj([19, 19, T / 2])
-  GAPS.forEach(([face, name, at], i) => {
+  // 06: the gap verify.py measured at three seams, then fill ratio, overlap and the inspector's stamp
+  const fit = 1 - ramp(5.96, 6.06, s), mid = proj([12, 10, 14])
+  HIW.callouts.forEach(({ at, gap }, i) => {
     const op = ramp(5.36 + 0.05 * i, 5.43 + 0.05 * i, s) * fit
     if (op < 0.01) return
-    const p = proj(at), dx = p[0] - mid[0], dy = p[1] - mid[1], len = Math.hypot(dx, dy) || 1
-    const q: Pt = [p[0] + (dx / len) * 54, p[1] + (dy / len) * 54]
-    out += g(op, line('ld', p, q) + dot(p) + tag(q[0], q[1], `${name} ${VERIFY.gaps!.find((g) => g.face === face)!.gap.toFixed(2)} mm`, '✓'))
+    const p = proj(at as V3), dx = p[0] - mid[0], dy = p[1] - mid[1], len = Math.hypot(dx, dy) || 1
+    const q: Pt = [p[0] + (dx / len) * 54, Math.max(p[1] + (dy / len) * 54, 106)] // below the stack of checks, top left
+    out += g(op, line('ld', p, q) + dot(p) + tag(q[0], q[1], `GAP ${gap.toFixed(2)} mm`, '✓', dx < 0 ? 'right' : 'left'))
   })
-  out += g(ramp(5.56, 5.64, s) * fit, tag(14, 22, `OVERLAP ${VERIFY.interference_volume!.toFixed(3)} mm³`, '✓', true)
-    + tag(14, 48, `WATERTIGHT · ${VERIFY.bodies} BODY`, '✓', true))
+  out += g(ramp(5.56, 5.64, s) * fit, tag(14, 22, `FILL ${(VERIFY.fill_ratio! * 100).toFixed(1)}%`, '✓', 'left')
+    + tag(14, 48, `OVERLAP ${VERIFY.interference_volume!.toFixed(3)} mm³`, '✓', 'left')
+    + tag(14, 74, `WATERTIGHT · ${VERIFY.bodies} BODY`, '✓', 'left'))
   const st = ramp(5.62, 5.72, s) * fit
   out += g(st, `<g transform="translate(${f(w - 54)},34) rotate(-4) scale(${(1 + 0.7 * (1 - st)).toFixed(2)})">`
     + `<rect class="stamp" x="-34" y="-14" width="68" height="28" rx="3"/><text class="stamp-t" y="5">PASS</text></g>`)
@@ -326,7 +327,7 @@ function Scrolly({ onStart }: { onStart: () => void }) {
     loadGeos().then((geo) => {
       if (!alive) return
       const sc = makeScene(geo)
-      sc.maskMat.uniforms.dpr.value = renderer.getPixelRatio()
+      sc.setDpr(renderer.getPixelRatio())
       setStatus('ready')
       let w = 0, h = 0, sd = -1, last = performance.now(), drawn = '', svg = '', typed = -1, step = -1
       ro = new ResizeObserver(() => {
@@ -382,7 +383,7 @@ function Scrolly({ onStart }: { onStart: () => void }) {
         <div className="titleblock">
           <div><span>Stage</span><b ref={sheetName}>{STEPS[0].sheet}</b></div>
           <div><span>Sheet</span><b ref={sheetNo}>01 / 07</b></div>
-          <div><span>Part</span><b>Corner cap</b></div>
+          <div><span>Part</span><b>Missing piece</b></div>
         </div>
       </div>
       <div className="hiw-steps" ref={steps}>
@@ -405,7 +406,7 @@ function Still({ onStart }: { onStart: () => void }) {
       const sc = makeScene(geo)
       sc.camera.aspect = w / h
       sc.camera.updateProjectionMatrix()
-      sc.maskMat.uniforms.dpr.value = renderer.getPixelRatio()
+      sc.setDpr(renderer.getPixelRatio())
       setFrames(STILL.map((s) => {
         sc.set(s, 0)
         renderer.render(sc.scene, sc.camera)

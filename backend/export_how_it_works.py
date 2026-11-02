@@ -1,49 +1,95 @@
-"""Export the How-it-works page's 3D assets to frontend/public/hiw/. Re-run after changing fixes/corner_cap.py.
+"""Export the How-it-works page's assets. Re-run after changing fixes/chip_fill.py or mocks/diagnose.json.
 
-cap.stl     the real corner cap at the app's default measurements, built and checked by verify.py
-table.stl   a tabletop corner with a chip, in the same frame (corner vertex at the origin)
-damage.stl  only the chip's broken faces, for the segmentation highlight
+frontend/public/hiw/
+  piece.stl       the real chip_fill piece at the app's mock-mode defaults, built and checked by verify.py
+  table.stl       the damaged table it fits (chip_fill.mating_solid), as verify.py exported it
+  prism_top.stl   the top outline extruded vertically, exactly as the code builds it
+  prism_side.stl  the side outline extruded horizontally
+frontend/src/hiw.json
+  the measurements, SAM's outlines in mm, verify.py's report, gap callouts on the visible seams, and the
+  passing Muse Spark Open code (mocks/spark_cad_chip_fill.json) at these values, wrapped to fit a phone
 """
 import inspect
 import json
+import math
 import shutil
 from pathlib import Path
 
 import cadquery as cq
 
-from fixes import corner_cap
-from verify import verify
+from fixes import chip_fill
+from verify import _on_face, verify
 
-# The app's defaults: the diagnosis examples (18 / 40 / 40) plus make()'s wall and clearance.
-P = dict(edge_thickness=18, reach_x=40, reach_y=40, wall=2.0, clearance=0.2)
-OUT = Path(__file__).parent.parent / "frontend" / "public" / "hiw"
-L = 110  # length of the table sample along each edge (mm)
+P = chip_fill.example()
+T, D, C = P["edge_thickness"], P["chip_depth"], P["clearance"]
+ROOT = Path(__file__).parent.parent
+OUT = ROOT / "frontend" / "public" / "hiw"
 
-res = verify(inspect.getsource(corner_cap) + f"\nresult = make(**{P!r})\n", "corner_cap", P)
+res = verify(inspect.getsource(chip_fill) + f"\nresult = make(**{P!r})\n", "chip_fill", P)
 assert res["ok"], res["error"]
-assert res["gaps"] == {"-x": 0.2, "-y": 0.2, "-z": 0.2, "+z": 0.2} and res["interference_volume"] == 0, res
+assert res["interference_volume"] == 0 and res["gap"]["typical"] == C and res["fill_ratio"] >= 0.9, res
 OUT.mkdir(parents=True, exist_ok=True)
-shutil.copy(res["stl_path"], OUT / "cap.stl")
+for old in ("cap.stl", "damage.stl"):
+    (OUT / old).unlink(missing_ok=True)
+shutil.copy(res["stl_path"], OUT / "piece.stl")
+shutil.copy(res["mate_path"], OUT / "table.stl")
+for name, wp in zip(("prism_top", "prism_side"), chip_fill.prisms(**P)):
+    cq.exporters.export(wp, str(OUT / f"{name}.stl"), tolerance=0.05, angularTolerance=0.2)
 
-# A chip about 1 cm across at the top corner: a tapered chunk, 6 mm deep, lofted down from above the top face.
-t = P["edge_thickness"]
-top = [(-4, -4), (13, -4), (9.5, 3), (6.5, 4.5), (5.5, 7), (3, 8.5), (-4, 11.5)]
-bottom = [(-4, -4), (4, -4), (3, 1), (2, 1.5), (1.6, 2.4), (1, 2.8), (-4, 4)]
-chip = (cq.Workplane().workplane(offset=t - 6).polyline(bottom).close()
-        .workplane(offset=7).polyline(top).close().loft(ruled=True))
-table = cq.Workplane().box(L, L, t, centered=False).cut(chip).val()
+# Gap callouts: each break face's measured gap, pinned to its seam you can see once the piece is in
+# (its edge on the tabletop, z = t, or on the front face, y = 0). Two on top and one in front: the largest faces
+# whose seams are at least 10 mm from the callouts already chosen, so they spread around the break.
+piece, seams = chip_fill.make(**P).val(), {"top": [], "front": []}
+for f in chip_fill.mating_solid(**P).val().Faces():
+    p = _on_face(f)
+    hit = piece.intersect(cq.Edge.makeLine(p, p + f.normalAt(p) * 1000))
+    for e in f.Edges() if hit.Edges() else []:
+        ends = (e.startPoint(), e.endPoint(), e.Center())  # OCCT's edge bounding boxes aren't tight
+        where = "top" if all(abs(v.z - T) < 1e-4 for v in ends) else "front" if all(abs(v.y) < 1e-4 for v in ends) else None
+        if where and e.Length() > 2:
+            gap = cq.Vertex.makeVertex(*p.toTuple()).distance(hit)
+            seams[where].append((f.Area(), [round(v, 2) for v in e.Center().toTuple()], round(gap, 2)))
+callouts = []
+for k in ("top", "top", "front"):
+    _, at, g = next(c for c in sorted(seams[k], reverse=True) if all(math.dist(c[1], o["at"]) >= 10 for o in callouts))
+    callouts.append({"at": at, "gap": g})
+assert len(callouts) == 3, seams
 
 
-def on_block(f):
-    """True for faces left over from the original block (x, y in {0, L}; z in {0, t}), i.e. not the break."""
-    b = f.BoundingBox()
-    return any(hi - lo < 1e-6 and min(abs(lo), abs(lo - end)) < 1e-6
-               for lo, hi, end in ((b.xmin, b.xmax, L), (b.ymin, b.ymax, L), (b.zmin, b.zmax, t)))
+def pts(name, xs, per=3):
+    rows = [", ".join(f"({x:g}, {y:g})" for x, y in xs[i:i + per]) for i in range(0, len(xs), per)]
+    return f"{name} = [" + ",\n  ".join(rows) + "]"
 
 
-damage = [f for f in table.Faces() if not on_block(f)]
-assert 4 <= len(damage) <= 12, len(damage)
-cq.exporters.export(table, str(OUT / "table.stl"), tolerance=0.05, angularTolerance=0.2)
-cq.exporters.export(cq.Compound.makeCompound(damage), str(OUT / "damage.stl"), tolerance=0.05, angularTolerance=0.2)
-print(json.dumps({k: res[k] for k in ("bbox", "gaps", "interference_volume", "watertight", "bodies")}))
-print(f"cap + table + {len(damage)} damage faces -> {OUT}")
+xmax, ymax = max(x for x, _ in P["top"]), max(y for _, y in P["top"])
+code = f"""import cadquery as cq
+
+t, d, c, r, E = {T:g}, {D:g}, {C:g}, 0.5, 5
+{pts("top", P["top"])}
+{pts("side", P["side"])}
+# push the face points past the table faces
+top = [(-E, -E), (top[1][0], -E),
+  *top[1:], (-E, top[-1][1])]
+side = [(-E, t+E), (side[1][0], t+E),
+  *side[1:], (-E, side[-1][1])]
+
+a = (cq.Workplane("XY", origin=(0, 0, t-d-E))
+  .polyline(top).close()
+  .offset2D(-c-r).offset2D(r)
+  .extrude(d + 2*E))
+b = (cq.Workplane("XZ", origin=(0, -E, 0))
+  .polyline(side).close()
+  .offset2D(-c-r).offset2D(r)
+  .extrude(-({ymax:g} + 2*E)))
+table = cq.Workplane().box(
+  {xmax:g}+E, {ymax:g}+E, t, centered=False)
+result = a.intersect(b).intersect(table)"""
+assert max(map(len, code.splitlines())) <= 48, "keep lines phone-width"
+
+keep = ("ok", "error", "watertight", "bodies", "bbox", "expected_bbox", "interference_volume", "gaps", "gap", "fill_ratio")
+data = {"t": T, "d": D, "c": C, "top": P["top"], "side": P["side"], "callouts": callouts, "code": code,
+        "verify": {k: res[k] for k in keep}}
+(ROOT / "frontend" / "src" / "hiw.json").write_text(json.dumps(data, indent=1) + "\n")
+print(json.dumps({k: res[k] for k in ("bbox", "gap", "fill_ratio", "interference_volume", "watertight", "bodies")}))
+print("callouts", callouts)
+print(f"piece + table + 2 prisms -> {OUT}; data -> frontend/src/hiw.json")

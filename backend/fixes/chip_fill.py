@@ -65,18 +65,14 @@ def outlines_mm(shape, edge_thickness, chip_depth, **_):
     return out
 
 
-def _past_faces(pts, out1, out2):
-    """Outline from the corner, along face 1, the break, back to face 2 -> same, pushed E past both faces."""
-    (cx, cy), p1, pn = pts[0], pts[1], pts[-1]
-    return [(cx + E * (out1[0] + out2[0]), cy + E * (out1[1] + out2[1])), (p1[0] + E * out1[0], p1[1] + E * out1[1]),
-            *map(tuple, pts[1:]), (pn[0] + E * out2[0], pn[1] + E * out2[1])]
-
-
 def prisms(top, side, edge_thickness, chip_depth, clearance=0.2, flatten=True):
     """The top outline extruded vertically and the side outline extruded horizontally."""
     t, c, r = edge_thickness, clearance, (MIN_FEATURE / 2 if flatten else 0)
-    a = cq.Workplane("XY", origin=(0, 0, t - chip_depth - E)).polyline(_past_faces(top, (0, -1), (-1, 0))).close()
-    b = cq.Workplane("XZ", origin=(0, -E, 0)).polyline(_past_faces(side, (0, 1), (-1, 0))).close()
+    # Push each outline's face points E past the table faces, so the offsets move only the break line.
+    top = [(-E, -E), (top[1][0], -E), *map(tuple, top[1:]), (-E, top[-1][1])]
+    side = [(-E, t + E), (side[1][0], t + E), *map(tuple, side[1:]), (-E, side[-1][1])]
+    a = cq.Workplane("XY", origin=(0, 0, t - chip_depth - E)).polyline(top).close()
+    b = cq.Workplane("XZ", origin=(0, -E, 0)).polyline(side).close()
     if c or r:
         a, b = (w.offset2D(-c - r).offset2D(r) if r else w.offset2D(-c) for w in (a, b))
     ymax = max(y for _, y in top)
