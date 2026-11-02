@@ -44,6 +44,13 @@ button { font: inherit; color: inherit; }
 .progress .on { color: var(--ink); border-color: var(--accent); }
 .progress .done { color: var(--ink-2); }
 .progress b { font-weight: 500; opacity: 0.6; margin-right: 4px; }
+.footer {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 24px;
+  width: min(1008px, 100% - 32px); margin: 0 auto; padding: 18px 0 calc(24px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--ink); font-family: var(--mono); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted);
+}
+.footer .tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.footer a { color: var(--ink); font-weight: 600; text-underline-offset: 3px; }
 
 .page { width: 100%; max-width: 1040px; margin: 0 auto; padding: 0 16px calc(48px + env(safe-area-inset-bottom)); }
 .screen { max-width: 600px; margin: 0 auto; padding-top: 20px; animation: rise 0.42s var(--ease) both; }

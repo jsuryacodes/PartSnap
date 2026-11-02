@@ -39,7 +39,7 @@ function HeroDrawing() {
         {/* callouts */}
         <g stroke={ink} strokeWidth="0.9" fill="none">
           <polyline points="166,116 120,50 70,50" />
-          <polyline points="150,170 110,232 70,232" />
+          <polyline points="150,170 140,232 70,232" />
         </g>
         <circle cx="166" cy="116" r="2.5" fill={ink} />
         <circle cx="150" cy="170" r="2.5" fill={ink} />
@@ -71,7 +71,7 @@ export default function Landing({ onStart }: { onStart: () => void }) {
         <div>
           <p className="eyebrow"><span className="accent">■</span> Repair, not replace</p>
           <h1 style={{ marginTop: 14 }}>Broken? Snap&nbsp;it. <em>Print the fix.</em></h1>
-          <p className="lede">Photograph the damage, take a couple of ruler measurements, and download a 3D-printable part that fits, verified to a tenth of a millimetre.</p>
+          <p className="lede">Photograph the damage, take a couple of ruler measurements, and download a 3D-printable part that fits, checked for fit against your measurements before you print.</p>
           <div className="hero-cta">
             <button className="btn btn-primary" onClick={onStart}>Fix something <span className="arrow">→</span></button>
             <div className="byline" style={{ marginTop: 0 }}>

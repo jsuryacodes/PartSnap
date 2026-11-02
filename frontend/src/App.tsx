@@ -5,7 +5,7 @@ import Generate, { type Done } from './Generate'
 import Landing from './Landing'
 import Measure, { type Params } from './Measure'
 import Result from './Result'
-import { Logo } from './ui'
+import { Footer, Logo } from './ui'
 
 const PHASES = ['Snap', 'Measure', 'Print'] as const
 
@@ -38,6 +38,7 @@ export default function App() {
         {job && !done && <Generate fix={job.d.fix_type} params={job.params} onDone={(d) => { setDone(d); top() }} />}
         {job && done && <Result done={done} params={job.params} onRestart={restart} />}
       </main>
+      {!started && <Footer />}
     </>
   )
 }
