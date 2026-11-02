@@ -1,1 +1,1 @@
-{ "framework": "vite" }
+{ "framework": "vite", "rewrites": [{ "source": "/how-it-works", "destination": "/index.html" }] }

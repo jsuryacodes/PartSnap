@@ -44,6 +44,10 @@ button { font: inherit; color: inherit; }
 .progress .on { color: var(--ink); border-color: var(--accent); }
 .progress .done { color: var(--ink-2); }
 .progress b { font-weight: 500; opacity: 0.6; margin-right: 4px; }
+.tabs { display: flex; gap: 16px; font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; }
+.tabs a { color: var(--ink-2); text-decoration: none; padding: 14px 2px 2px; margin-top: -14px; border-bottom: 2px solid transparent; transition: color 0.2s, border-color 0.2s; }
+.tabs a:hover { color: var(--ink); }
+.tabs a[aria-current] { color: var(--ink); border-color: var(--accent); }
 .footer {
   display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 24px;
   width: min(1008px, 100% - 32px); margin: 0 auto; padding: 18px 0 calc(24px + env(safe-area-inset-bottom));
@@ -101,7 +105,7 @@ button { font: inherit; color: inherit; }
 .hero h1 em { font-style: normal; color: var(--accent); }
 .hero .lede { font-size: 17px; max-width: 34em; margin-top: 16px; }
 .hero-cta { display: flex; flex-direction: column; gap: 14px; margin-top: 24px; align-items: flex-start; }
-.drawing {
+.drawing, .hiw-stage, .hiw-fig {
   position: relative; border: 1px solid var(--ink); background-color: var(--paper-hi);
   background-image: linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px);
   background-size: 16px 16px; background-position: -1px -1px;
@@ -268,4 +272,53 @@ button { font: inherit; color: inherit; }
   .measure-spec { position: sticky; top: 72px; }
   .measure-spec > .section-head:first-child { margin-top: 0; }
   .result-grid { grid-template-columns: 1.4fr 1fr; align-items: start; }
+}
+
+/* ---------- how it works ---------- */
+.page.wide { max-width: 1240px; }
+.hiw-defs { position: absolute; width: 0; height: 0; }
+.hiw-stage { position: sticky; top: var(--bar, 47px); z-index: 2; display: flex; flex-direction: column; height: 42svh; margin: 0 -16px; border-width: 0 0 1px; }
+.hiw-view { position: relative; flex: 1; min-height: 0; }
+.hiw-view canvas { position: absolute; inset: 0; display: block; }
+.hiw-ov { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.hiw-msg { position: absolute; inset: 0; display: grid; place-items: center; font-family: var(--mono); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+/* phone: each card pins just under the stage while its step plays */
+.hiw-step { min-height: 120svh; padding: 16px 0 24px; }
+.hiw-card { position: sticky; top: calc(var(--bar, 47px) + 42svh + 16px); max-width: 31em; }
+.hiw-card h1, .hiw-card h2 { font-size: clamp(28px, 7.6vw, 46px); line-height: 1.02; letter-spacing: -0.03em; font-weight: 700; margin-top: 10px; }
+.hiw-card .body { color: var(--ink-2); font-size: 16px; line-height: 1.55; margin-top: 12px; }
+.hiw-card .byline { margin-top: 14px; }
+.hiw-card .checklist { display: none; margin-top: 16px; } /* phone: the stage shows the checks */
+.hiw-card .btn { margin-top: 24px; }
+.hiw-code { margin: 16px 0 0; padding: 12px; height: calc(5 * 1.55em + 24px); overflow: hidden; background: var(--ink); color: #e9e4d8; font-family: var(--mono); font-size: 11px; line-height: 1.55; border-radius: 2px; }
+.hiw-code code:not(.still)::after { content: '▍'; color: var(--accent); animation: blink 1s infinite; }
+.hiw-ov .br { fill: none; stroke: var(--ink); stroke-width: 2; }
+.hiw-ov .ext, .hiw-ov .ld { stroke: var(--ink); stroke-width: 1; }
+.hiw-ov .dl { stroke: var(--accent); stroke-width: 2; }
+.hiw-ov .dot { fill: var(--accent); stroke: var(--ink); stroke-width: 1.2; }
+.hiw-ov .tag rect { fill: var(--ink); }
+.hiw-ov .tag text { fill: var(--paper-hi); font-family: var(--mono); font-size: 11px; font-weight: 500; }
+.hiw-ov .tag .n { fill: var(--accent); font-weight: 700; }
+.hiw-ov .th { fill: var(--paper-hi); stroke: var(--rule-strong); stroke-dasharray: 3 2; }
+.hiw-ov .th.now { stroke: var(--accent); stroke-width: 1.5; stroke-dasharray: none; }
+.hiw-ov .th.done { fill: var(--ink); stroke: var(--ink); stroke-dasharray: none; }
+.hiw-ov .thn { font-family: var(--mono); font-size: 11px; font-weight: 600; text-anchor: middle; fill: var(--muted); }
+.hiw-ov .th.done + .thn { fill: var(--paper-hi); }
+.hiw-ov .stamp { fill: var(--paper-hi); stroke: var(--ink); stroke-width: 2; }
+.hiw-ov .stamp-t { font-family: var(--mono); font-size: 13px; font-weight: 700; letter-spacing: 0.14em; text-anchor: middle; fill: var(--ink); }
+.hiw-still .hiw-step { min-height: 0; display: grid; gap: 18px; padding: 28px 0; border-bottom: 1px solid var(--rule); }
+.hiw-still .hiw-card { position: static; }
+.hiw-still .hiw-code { height: auto; }
+.hiw-still .hiw-card .checklist { display: block; }
+.hiw-fig { margin: 0; aspect-ratio: 4 / 3; }
+.hiw-fig img, .hiw-fig svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+@media (min-width: 900px) {
+  .hiw { display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); column-gap: 56px; }
+  .hiw-stage { grid-area: 1 / 2; align-self: start; top: calc(var(--bar, 47px) + 20px); height: calc(100svh - var(--bar, 47px) - 40px); margin: 0; border-width: 1px; }
+  .hiw-steps { grid-area: 1 / 1; }
+  .hiw-step { min-height: calc(100svh - var(--bar, 47px)); display: flex; align-items: center; padding: 40px 0; }
+  .hiw-card { position: static; }
+  .hiw-card .checklist { display: block; }
+  .hiw-code { font-size: 11.5px; height: calc(14 * 1.55em + 24px); }
+  .hiw-still .hiw-step { grid-template-columns: 1.1fr 1fr; align-items: center; gap: 48px; }
 }

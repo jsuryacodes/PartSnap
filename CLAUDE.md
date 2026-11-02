@@ -16,8 +16,10 @@ backend/
   mocks/          saved model responses for MOCK_MODE
   spark_cad.py    Spark Open -> CadQuery -> verify -> repair loop; run() yields progress events
   app.py          FastAPI: /check-photo, /diagnose, /generate (SSE), /stl/{name}
+  export_how_it_works.py  writes frontend/public/hiw/*.stl (real cap via verify.py + chipped table); re-run if corner_cap changes
 frontend/src/
   Landing -> Capture -> Measure -> Generate -> Result   one component per screen; api.ts holds all fetches
+  HowItWorks.tsx  /how-it-works: lazy-loaded scroll-driven three.js explainer; still frames under reduced motion
   index.css       design tokens (paper/ink/safety-orange, IBM Plex Sans + Mono) and all styles; ui.tsx shared bits
 ```
 
