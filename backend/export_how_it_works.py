@@ -6,8 +6,9 @@ frontend/public/hiw/
   prism_top.stl   the top outline extruded vertically, exactly as the code builds it
   prism_side.stl  the side outline extruded horizontally
 frontend/src/hiw.json
-  the measurements, SAM's outlines in mm, verify.py's report, gap callouts on the visible seams, and the
-  passing Muse Spark Open code (mocks/spark_cad_chip_fill.json) at these values, wrapped to fit a phone
+  the measurements, SAM's outlines in mm, the piece's flush faces (front and top, for the landing drawing),
+  verify.py's report, gap callouts on the visible seams, and the passing Muse Spark Open code
+  (mocks/spark_cad_chip_fill.json) at these values, wrapped to fit a phone
 """
 import inspect
 import json
@@ -16,6 +17,8 @@ import shutil
 from pathlib import Path
 
 import cadquery as cq
+from OCP.BRepTools import BRepTools_WireExplorer
+from OCP.TopAbs import TopAbs_REVERSED
 
 from fixes import chip_fill
 from verify import _on_face, verify
@@ -56,6 +59,25 @@ for k in ("top", "top", "front"):
 assert len(callouts) == 3, seams
 
 
+def face_outline(face, axes):
+    """A flat face's outer wire in traversal order, as [a, b] mm on the given axes; arcs sampled every 0.4 mm."""
+    out, ex = [], BRepTools_WireExplorer(face.outerWire().wrapped)
+    while ex.More():
+        e = cq.Edge(ex.Current())
+        n = 1 if e.geomType() == "LINE" else max(2, round(e.Length() / 0.4))
+        ts = [i / n for i in range(n)]
+        out += [e.positionAt(1 - u if ex.Orientation() == TopAbs_REVERSED else u).toTuple() for u in ts]
+        ex.Next()
+    return [[round(p[i], 2) for i in axes] for p in out]
+
+
+# The piece's faces that sit flush with the table: the front (y = 0, as [x, z]) and the top (z = t, as [x, y]).
+front = [f for f in piece.Faces() if abs(f.Center().y) < 1e-6]
+top_face = [f for f in piece.Faces() if abs(f.Center().z - T) < 1e-6]
+assert len(front) == len(top_face) == 1, (len(front), len(top_face))
+piece_front, piece_top = face_outline(front[0], (0, 2)), face_outline(top_face[0], (0, 1))
+
+
 def pts(name, xs, per=3):
     rows = [", ".join(f"({x:g}, {y:g})" for x, y in xs[i:i + per]) for i in range(0, len(xs), per)]
     return f"{name} = [" + ",\n  ".join(rows) + "]"
@@ -87,7 +109,8 @@ result = a.intersect(b).intersect(table)"""
 assert max(map(len, code.splitlines())) <= 48, "keep lines phone-width"
 
 keep = ("ok", "error", "watertight", "bodies", "bbox", "expected_bbox", "interference_volume", "gaps", "gap", "fill_ratio")
-data = {"t": T, "d": D, "c": C, "top": P["top"], "side": P["side"], "callouts": callouts, "code": code,
+data = {"t": T, "d": D, "c": C, "top": P["top"], "side": P["side"], "piece_front": piece_front, "piece_top": piece_top,
+        "callouts": callouts, "code": code,
         "verify": {k: res[k] for k in keep}}
 (ROOT / "frontend" / "src" / "hiw.json").write_text(json.dumps(data, indent=1) + "\n")
 print(json.dumps({k: res[k] for k in ("bbox", "gap", "fill_ratio", "interference_volume", "watertight", "bodies")}))

@@ -1,11 +1,20 @@
+import { c as C, d as D, piece_front, piece_top, side, t as T, verify } from './hiw.json'
 import { ArrowDefs, ModelTag } from './ui'
 
-/** Section view of the corner cap over a chipped tabletop, drawn like a shop drawing. */
+/** Shop drawing of the real default fix (backend/export_how_it_works.py): the front view, with the piece lifted out
+ *  of its chip, and the top view, where it sits in the chip because lifting doesn't change the plan. Millimetres. */
 function HeroDrawing() {
-  const ink = 'var(--ink)'
+  const ink = 'var(--ink)', k = 7.56, X0 = 62, Y0 = 266, W = 46, LIFT = 12 // 7.56 px/mm is 2:1 at 480 px wide
+  const fp = ([x, z]: number[]) => `${(X0 + x * k).toFixed(1)},${(Y0 - z * k).toFixed(1)}` // front view: x right, z up
+  const ks = 3.2, PX = 284, PY = 112 // top view: x right, y up (front edge at the bottom), as drawn in third angle
+  const tp = ([x, y]: number[]) => `${(PX + x * ks).toFixed(1)},${(PY - y * ks).toFixed(1)}`
+  const zig = (along: (u: number, off: number) => number[], n = 4) => // a break line, where the drawing stops
+    Array.from({ length: n + 1 }, (_, i) => along(i / n, i % 2 ? (i % 4 === 1 ? 0.8 : -0.8) : 0))
+  const table = [[0, 0], ...zig((u, o) => [W + o, u * T]), ...side.slice(1)]
+  const plan = [[0, 0], ...zig((u, o) => [W + o, u * 26]).slice(0, -1), [W, 26], ...zig((u, o) => [W * (1 - u), 26 + o]).slice(1)]
   return (
     <figure className="drawing" style={{ margin: 0 }}>
-      <svg viewBox="0 0 480 280" role="img" aria-label="Section drawing: a corner cap fitted over a chipped tabletop edge with 0.2 mm clearance">
+      <svg viewBox="0 0 480 312" role="img" aria-label={`Front and top views: the missing piece of a chipped tabletop corner, lifted out of the chip it fills, ${C} mm gap to the break`}>
         <defs>
           <ArrowDefs id="h-arrow" color={ink} />
           <pattern id="h-hatch" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
@@ -13,55 +22,55 @@ function HeroDrawing() {
           </pattern>
         </defs>
 
-        {/* tabletop, chipped at the corner, broken off on the right */}
-        <path d="M396 120 L186 120 L179 127 L173 125 L170 136 L170 180 L396 180" fill="url(#h-hatch)" stroke={ink} strokeWidth="1.5" />
-        <path d="M396 120 L390 136 L402 150 L390 164 L396 180" fill="none" stroke={ink} strokeWidth="1.2" />
-
-        {/* the cap, in section */}
-        <path d="M300 100 L150 100 L150 200 L300 200 L300 189 L161 189 L161 111 L300 111 Z" fill="var(--accent)" stroke={ink} strokeWidth="1.5" />
-
-        {/* reach */}
-        <g stroke={ink} strokeWidth="0.9">
-          <line x1="150" y1="96" x2="150" y2="58" />
-          <line x1="300" y1="96" x2="300" y2="58" />
-          <line x1="150" y1="66" x2="300" y2="66" markerStart="url(#h-arrow)" markerEnd="url(#h-arrow)" />
+        {/* front view: the tabletop edge with SAM's side outline as the chip, and the piece lifted out of it */}
+        <polygon points={table.map(fp).join(' ')} fill="url(#h-hatch)" stroke={ink} strokeWidth="1.5" strokeLinejoin="round" />
+        <polygon points={piece_front.map(([x, z]) => fp([x, z + LIFT])).join(' ')} fill="var(--accent)" stroke={ink} strokeWidth="1.5" strokeLinejoin="round" />
+        <g stroke={ink} strokeWidth="1" strokeDasharray="4 3">
+          <line x1={X0 + 6 * k} y1={Y0 - 20 * k} x2={X0 + 6 * k} y2={Y0 - 12.6 * k} markerEnd="url(#h-arrow)" />
+          <line x1={X0 + 17 * k} y1={Y0 - 23.6 * k} x2={X0 + 17 * k} y2={Y0 - 15.4 * k} markerEnd="url(#h-arrow)" />
         </g>
-        <text x="225" y="58" textAnchor="middle" className="dt">40.0</text>
 
-        {/* thickness */}
+        {/* the two numbers the app asks for */}
         <g stroke={ink} strokeWidth="0.9">
-          <line x1="410" y1="120" x2="446" y2="120" />
-          <line x1="410" y1="180" x2="446" y2="180" />
-          <line x1="438" y1="120" x2="438" y2="180" markerStart="url(#h-arrow)" markerEnd="url(#h-arrow)" />
+          <line x1={X0 + W * k + 8} y1={Y0} x2={X0 + W * k + 40} y2={Y0} />
+          <line x1={X0 + W * k + 8} y1={Y0 - T * k} x2={X0 + W * k + 40} y2={Y0 - T * k} />
+          <line x1={X0 + W * k + 32} y1={Y0} x2={X0 + W * k + 32} y2={Y0 - T * k} markerStart="url(#h-arrow)" markerEnd="url(#h-arrow)" />
+          <line x1={X0 - 6} y1={Y0 - T * k} x2={X0 - 38} y2={Y0 - T * k} />
+          <line x1={X0 - 6} y1={Y0 - (T - D) * k} x2={X0 - 38} y2={Y0 - (T - D) * k} />
+          <line x1={X0 - 30} y1={Y0 - T * k} x2={X0 - 30} y2={Y0 - (T - D) * k} markerStart="url(#h-arrow)" markerEnd="url(#h-arrow)" />
         </g>
-        <text x="444" y="154" className="dt" textAnchor="start" transform="rotate(-90 444 154)" dx="-14" dy="12">18.0</text>
+        <text className="dt" textAnchor="middle" transform={`translate(${X0 + W * k + 46} ${Y0 - (T * k) / 2}) rotate(-90)`}>{T.toFixed(1)}</text>
+        <text className="dt" textAnchor="middle" transform={`translate(${X0 - 36} ${Y0 - (T - D / 2) * k}) rotate(-90)`}>{D.toFixed(1)}</text>
 
         {/* callouts */}
         <g stroke={ink} strokeWidth="0.9" fill="none">
-          <polyline points="166,116 120,50 70,50" />
-          <polyline points="150,170 140,232 70,232" />
+          <polyline points={`${fp([20.2, 13.9])} ${X0 + 26 * k},${Y0 - 9 * k} ${X0 + 34 * k},${Y0 - 9 * k}`} />
         </g>
-        <circle cx="166" cy="116" r="2.5" fill={ink} />
-        <circle cx="150" cy="170" r="2.5" fill={ink} />
-        <text x="70" y="44" className="dt">GAP 0.2</text>
-        <text x="70" y="226" className="dt">WALL 2.0</text>
+        <circle cx={X0 + 20.2 * k} cy={Y0 - 13.9 * k} r="2.5" fill={ink} />
+        <rect x={X0 + 34.3 * k} y={Y0 - 9 * k - 10} width="62" height="19" fill="var(--paper-hi)" />
+        <text x={X0 + 34.6 * k} y={Y0 - 9 * k + 4} className="dt">GAP {C.toFixed(1)}</text>
 
-        <text x="240" y="262" textAnchor="middle" className="dt small">SECTION A–A · SCALE 2:1</text>
+        {/* top view */}
+        <polygon points={plan.map(tp).join(' ')} fill="var(--paper-hi)" stroke={ink} strokeWidth="1.2" strokeLinejoin="round" />
+        <polygon points={piece_top.map(tp).join(' ')} fill="var(--accent)" stroke={ink} strokeWidth="1.2" strokeLinejoin="round" />
+
+        <text x={X0 + (W * k) / 2} y={Y0 + 30} textAnchor="middle" className="dt small">FRONT VIEW</text>
+        <text x={PX + (W * ks) / 2} y={PY - 26 * ks - 10} textAnchor="middle" className="dt small">TOP VIEW</text>
         <style>{`.dt{font-family:var(--mono);font-size:13px;font-weight:500;fill:var(--ink)}.dt.small{font-size:10px;letter-spacing:.12em;fill:var(--muted)}`}</style>
       </svg>
       <div className="titleblock">
-        <div><span>Part</span><b>Corner cap</b></div>
-        <div><span>Mat</span><b>PLA</b></div>
-        <div><span>Tol</span><b>±0.1</b></div>
+        <div><span>Part</span><b>Missing piece</b></div>
+        <div><span>Gap</span><b>{C.toFixed(1)}</b></div>
+        <div><span>Fill</span><b>{(verify.fill_ratio * 100).toFixed(1)}%</b></div>
       </div>
     </figure>
   )
 }
 
 const STEPS = [
-  ['01', 'Snap', 'Three guided photos. A live level keeps every shot square.'],
-  ['02', 'Measure', 'The AI marks exactly where to put the ruler: 2–3 numbers, nothing more.'],
-  ['03', 'Print', 'CAD is written, then checked for fit against your measurements before you download.'],
+  ['01', 'Snap', 'Three guided photos. SAM 3.1 outlines what’s missing, from the top and from the side.'],
+  ['02', 'Measure', 'Two ruler readings: the tabletop thickness, which scales the outlines to millimetres, and the chip depth.'],
+  ['03', 'Print', 'The CAD is written, then checked against the break before you download: no overlap, a 0.2\u00a0mm gap, 90%+ filled. Glue it in.'],
 ]
 
 export default function Landing({ onStart }: { onStart: () => void }) {
@@ -70,8 +79,8 @@ export default function Landing({ onStart }: { onStart: () => void }) {
       <div className="hero">
         <div>
           <p className="eyebrow"><span className="accent">■</span> Repair, not replace</p>
-          <h1 style={{ marginTop: 14 }}>Broken? Snap&nbsp;it. <em>Print the fix.</em></h1>
-          <p className="lede">Photograph the damage, take a couple of ruler measurements, and download a 3D-printable part that fits, checked for fit against your measurements before you print.</p>
+          <h1 style={{ marginTop: 14 }}>Chipped? Snap&nbsp;it. <em>Print the missing piece.</em></h1>
+          <p className="lede">Photograph the chip from the top and the side, take two ruler measurements, and download the exact missing piece as a 3D-printable STL, checked against the break before you print. Glue it in and the corner is whole again.</p>
           <div className="hero-cta">
             <button className="btn btn-primary" onClick={onStart}>Fix something <span className="arrow">→</span></button>
             <div className="byline" style={{ marginTop: 0 }}>
