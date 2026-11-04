@@ -1,0 +1,177 @@
+{
+ "measurements": {
+  "edge_length_mm": 36,
+  "top_depth_mm": 12,
+  "front_depth_mm": 7
+ },
+ "clearance": 0.2,
+ "events": [
+  {
+   "type": "attempt",
+   "n": 1,
+   "by": "Muse Wonder"
+  },
+  {
+   "type": "design",
+   "n": 1,
+   "model": "muse-wonder-1.0",
+   "by": "Muse Wonder",
+   "rationale": "Built the chip fill by lofting between the deep break boundaries of the top and front outlines, offsetting it by the clearance while keeping the tabletop and front faces flush, then trimming its thin ends to the minimum printable thickness.",
+   "code": "def _break_chain(outline):\n    n = len(outline)\n    start = min(range(n), key=lambda i: (outline[i][0], i))\n    x_max = max(p[0] for p in outline)\n    chains = []\n    for step in (-1, 1):\n        chain = [outline[start]]\n        i = start\n        for _ in range(n):\n            if chain[-1][0] >= x_max - 1e-9 and len(chain) > 1:\n                break\n            i = (i + step) % n\n            chain.append(outline[i])\n        chains.append(chain)\n    # The break chain is farther from the edge (larger y/z) than the edge-hugging chain.\n    return max(chains, key=lambda c: sum(p[1] for p in c) / len(c))\n\ntop_back = _break_chain(TOP)\nfront_bottom = _break_chain(FRONT)\n# Both chains are already ordered along increasing x from the blunt end to the feather end.\nsolid = loft_between(top_back, front_bottom)\nsolid = offset_inward(solid, CLEARANCE)\nsolid, trimmed_mm = enforce_min_thickness(solid, MIN_THICKNESS)\nresult = solid\n",
+   "code_hash": "a981756c00b0",
+   "trimmed_mm": 1.2,
+   "usage": {
+    "prompt_tokens": 1300,
+    "completion_tokens": 3427,
+    "reasoning_tokens": 2955
+   }
+  },
+  {
+   "type": "verify",
+   "n": 1,
+   "ok": true,
+   "error": null,
+   "clearance": 0.2,
+   "checks": [
+    {
+     "name": "Watertight, single body",
+     "ok": true,
+     "value": "1 body",
+     "expected": null
+    },
+    {
+     "name": "Overall size",
+     "ok": true,
+     "value": "34.40 \u00d7 11.54 \u00d7 6.76 mm",
+     "expected": "34.40 \u00d7 11.54 \u00d7 6.76 \u00b1 0.3"
+    },
+    {
+     "name": "Overlap with the table",
+     "ok": true,
+     "value": "0.000 mm\u00b3",
+     "expected": "0"
+    },
+    {
+     "name": "Gap to the break",
+     "ok": true,
+     "value": "0.199 mm typical",
+     "expected": "0.20 \u00b1 0.05 on 82 faces (0.198\u20130.200)"
+    },
+    {
+     "name": "Min thickness",
+     "ok": true,
+     "value": "1.10 mm",
+     "expected": "\u2265 1.0"
+    }
+   ],
+   "watertight": true,
+   "bodies": 1,
+   "volume": 643.599,
+   "bbox": [
+    34.4,
+    11.538,
+    6.761
+   ],
+   "expected_bbox": [
+    34.4,
+    11.538,
+    6.761
+   ],
+   "gaps_skipped": 8,
+   "interference_volume": 0.0,
+   "gap": {
+    "min": 0.198,
+    "typical": 0.199,
+    "max": 0.2
+   },
+   "min_thickness": 1.105,
+   "thinnest_at_x": 0.62,
+   "trimmed_mm": 1.2,
+   "stl_path": "/Users/js/Documents/PartSnap/backend/out/chip_fill-d8746e4d566d-020.stl",
+   "mate_path": "/Users/js/Documents/PartSnap/backend/out/chip_fill-d8746e4d566d-mate.stl"
+  },
+  {
+   "type": "verify",
+   "n": 1,
+   "ok": true,
+   "error": null,
+   "clearance": 0.4,
+   "checks": [
+    {
+     "name": "Watertight, single body",
+     "ok": true,
+     "value": "1 body",
+     "expected": null
+    },
+    {
+     "name": "Overall size",
+     "ok": true,
+     "value": "33.80 \u00d7 11.10 \u00d7 6.52 mm",
+     "expected": "33.80 \u00d7 11.10 \u00d7 6.52 \u00b1 0.3"
+    },
+    {
+     "name": "Overlap with the table",
+     "ok": true,
+     "value": "0.000 mm\u00b3",
+     "expected": "0"
+    },
+    {
+     "name": "Gap to the break",
+     "ok": true,
+     "value": "0.398 mm typical",
+     "expected": "0.40 \u00b1 0.05 on 81 faces (0.395\u20130.404)"
+    },
+    {
+     "name": "Min thickness",
+     "ok": true,
+     "value": "1.13 mm",
+     "expected": "\u2265 1.0"
+    }
+   ],
+   "watertight": true,
+   "bodies": 1,
+   "volume": 578.771,
+   "bbox": [
+    33.8,
+    11.095,
+    6.523
+   ],
+   "expected_bbox": [
+    33.8,
+    11.095,
+    6.523
+   ],
+   "gaps_skipped": 9,
+   "interference_volume": 0.0,
+   "gap": {
+    "min": 0.395,
+    "typical": 0.398,
+    "max": 0.404
+   },
+   "min_thickness": 1.131,
+   "thinnest_at_x": 0.92,
+   "trimmed_mm": 1.4,
+   "stl_path": "/Users/js/Documents/PartSnap/backend/out/chip_fill-33cf9d3a4150-040.stl",
+   "mate_path": "/Users/js/Documents/PartSnap/backend/out/chip_fill-33cf9d3a4150-mate.stl"
+  },
+  {
+   "type": "done",
+   "ok": true,
+   "attempts": 1,
+   "model": "muse-wonder-1.0",
+   "rationale": "Built the chip fill by lofting between the deep break boundaries of the top and front outlines, offsetting it by the clearance while keeping the tabletop and front faces flush, then trimming its thin ends to the minimum printable thickness.",
+   "trimmed_mm": 1.2,
+   "mate_path": "/Users/js/Documents/PartSnap/backend/out/chip_fill-d8746e4d566d-mate.stl",
+   "stls": [
+    {
+     "clearance": 0.2,
+     "path": "/Users/js/Documents/PartSnap/backend/out/chip_fill-d8746e4d566d-020.stl"
+    },
+    {
+     "clearance": 0.4,
+     "path": "/Users/js/Documents/PartSnap/backend/out/chip_fill-33cf9d3a4150-040.stl"
+    }
+   ]
+  }
+ ]
+}
