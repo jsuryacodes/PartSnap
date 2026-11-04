@@ -1,0 +1,26 @@
+# Render Blueprint: the PartSnap API. Keys are set in the Render dashboard only (sync: false), never in git.
+services:
+  - type: web
+    name: partsnap-api
+    runtime: docker
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    plan: standard # 2 GB: an agent run peaks ~1 GB (CadQuery + manifold) plus the sandbox process
+    healthCheckPath: /docs
+    disk:
+      name: partsnap-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: MODEL_API_KEY
+        sync: false
+      - key: BASETEN_API_KEY
+        sync: false
+      - key: MOCK_MODE
+        value: "1" # flip to 0 in the dashboard for live models
+      - key: FRONTEND_ORIGIN
+        value: https://partsnap-one.vercel.app
+      - key: CACHE_DIR
+        value: /var/data/cache # model cache + daily spend counter, survives deploys
+      - key: OUT_DIR
+        value: /var/data/out # generated STLs
