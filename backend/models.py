@@ -101,17 +101,28 @@ def call(provider: str, payload: dict, mock: str, mock_vars: dict | None = None)
         resp = json.loads(raw)[n]
         time.sleep(MOCK_LATENCY)  # so the UI's streaming is visible in demos
     else:
-        key = hashlib.sha256(json.dumps([provider, payload], sort_keys=True).encode()).hexdigest()
-        f = CACHE / f"{key}.json"
-        if f.exists():
-            resp, source = json.loads(f.read_text()), "cache"
-        else:
-            _spend()
-            resp, source = PROVIDERS[provider](payload), "live"
-            CACHE.mkdir(parents=True, exist_ok=True)
-            f.write_text(json.dumps(resp))
+        try:
+            resp, source = _cached_or_live(provider, payload)
+        except httpx.HTTPError as e:  # covers timeouts and 4xx/5xx
+            if payload.get("model") != WONDER:
+                raise
+            print(f"[model] fallback {WONDER} -> {SPARK} after: {str(e)[:300]}")
+            payload = {**payload, "model": SPARK}
+            resp, source = _cached_or_live(provider, payload)
     _log_usage(provider, payload.get("model"), source, resp.get("usage") or {}, time.time() - t0)
     return resp
+
+
+def _cached_or_live(provider, payload):
+    key = hashlib.sha256(json.dumps([provider, payload], sort_keys=True).encode()).hexdigest()
+    f = CACHE / f"{key}.json"
+    if f.exists():
+        return json.loads(f.read_text()), "cache"
+    _spend()
+    resp = PROVIDERS[provider](payload)
+    CACHE.mkdir(parents=True, exist_ok=True)
+    f.write_text(json.dumps(resp))
+    return resp, "live"
 
 
 def meta_json(prompt: str, images: list[bytes], mock: str, model: str = SPARK,
@@ -156,4 +167,29 @@ if __name__ == "__main__":  # offline self-check: no network, no keys used
     assert b["text"]["format"]["type"] == "json_schema"
     assert r == {"content": "OK", "reasoning": "think", "status": "completed",
                  "usage": {"prompt_tokens": 12, "completion_tokens": 30, "reasoning_tokens": 28}}, r
+
+    # Wonder failure -> one retry on Spark, through the real call() path (cache in a temp dir)
+    import tempfile
+    MOCK_MODE, CACHE, tried = False, Path(tempfile.mkdtemp()), []
+
+    def flaky(p):
+        tried.append(p["model"])
+        if p["model"] == WONDER:
+            raise httpx.ReadTimeout("simulated timeout")
+        return {"content": "OK", "usage": {}}
+
+    PROVIDERS["meta"] = flaky
+    assert call("meta", {"model": WONDER, "prompt": "hi"}, mock="")["content"] == "OK"
+    assert tried == [WONDER, SPARK], tried
+
+    def down(p):
+        tried.append(p["model"])
+        raise httpx.ConnectError("down")
+
+    PROVIDERS["meta"], tried[:] = down, []
+    try:
+        call("meta", {"model": SPARK, "prompt": "boom"}, mock="")
+        raise AssertionError("a Spark error should propagate, not retry")
+    except httpx.ConnectError:
+        assert tried == [SPARK], tried
     print("models self-check passed")
