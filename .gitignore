@@ -18,3 +18,5 @@ out/
 .cache/
 
 .DS_Store
+backend/.env
+frontend/public/__test/

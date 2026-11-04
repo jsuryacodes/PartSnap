@@ -108,6 +108,7 @@ export default function Result({ done, params, onRestart }: { done: Done; params
     <div className="screen wide">
       <p className="eyebrow">Result · <span className="accent">verified</span></p>
       <h2 className="title">Your missing piece is ready to print</h2>
+      {done.overridden && <p className="notice">Downloaded despite the reviewer's concerns (recorded in the agent log): {done.review?.notes.join(' ')}</p>}
       <div className="result-grid">
         <div>
           <Preview url={API + design.url} mateUrl={done.mate_url ? API + done.mate_url : undefined} />
@@ -141,7 +142,8 @@ export default function Result({ done, params, onRestart }: { done: Done; params
               <dt>Checks</dt><dd className="ok">{v.checks.filter((c) => c.ok).length}/{v.checks.length} passed</dd>
             </dl>
             {done.rationale && <p className="reasoning" style={{ padding: '8px 12px', fontSize: 14 }}>“{done.rationale}”</p>}
-            <div className="foot byline">CAD by <ModelTag>{done.by}</ModelTag><span className="mono">{done.attempts} attempt{done.attempts > 1 ? 's' : ''}</span></div>
+            <div className="foot byline">CAD by <ModelTag>{done.by}</ModelTag><span className="mono">{done.attempts} attempt{done.attempts > 1 ? 's' : ''}</span>
+              {done.review && <>reviewed by <ModelTag>{done.review.by}</ModelTag><span className="mono">{done.review.verdict}</span></>}</div>
           </section>
           <button className="btn btn-ghost btn-block" style={{ marginTop: 16 }} onClick={onRestart}>Fix something else</button>
         </div>

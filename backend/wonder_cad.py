@@ -62,6 +62,72 @@ Verifier output:
 Fix it and answer with the full corrected JSON only."""
 
 
+REVIEW = """You are an independent reviewer for PartSnap, which 3D-prints a piece to glue into a chip on a table's front \
+edge. Another model (Muse Wonder) wrote the CAD; a geometric verifier built and measured it. Decide whether the piece \
+should be released to the user for printing.
+
+Frame (mm): x along the edge, y back into the table from the front face, z down from the tabletop. The user measured \
+with a ruler: A = chip length along the edge, B = deepest point back on the tabletop, C = deepest point down the front.
+Expected overall size: x = A - 2 x clearance - trimmed thin ends; y a little under B; z a little under C (the break \
+surface is offset inward by the clearance, square to the sloped break).
+
+{data}
+
+Check: are the measurements plausible for a chipped table edge, does every verifier check pass, is each final size \
+consistent with the measurements, does Wonder's rationale match what the verifier measured, is anything too thin or \
+too small to print and glue? Reject only for a real problem the user should know about before printing. Keep your \
+reasoning brief.
+
+Answer with JSON only, no markdown: {{"verdict": "approve" | "reject", "notes": ["<one short sentence each, for the \
+user>"]}}"""
+REVIEW_MAX_TOKENS = 8000  # reasoning + JSON: a live run at 1500 spent all of it reasoning (finish_reason "length")
+REVIEW_BY = "Muse Spark Open"
+
+
+def review_data(params: dict, d: dict, results: list) -> dict:
+    """What the reviewer sees: measurements, Wonder's answer, and each clearance's verify result (no code, no paths)."""
+    keep = ("checks", "bbox", "expected_bbox", "gap", "min_thickness", "trimmed_mm", "interference_volume")
+    return {"measurements_mm": {"A": params["edge_length_mm"], "B": params["top_depth_mm"], "C": params["front_depth_mm"]},
+            "chosen_clearance_mm": params["clearance"],
+            "wonder": {"rationale": d["rationale"], "declared_trimmed_mm": d["trimmed_mm"]},
+            "verify": [{"clearance_mm": r["clearance"], **{k: r.get(k) for k in keep}} for r in results]}
+
+
+def review(data: dict) -> dict:
+    """Spark Open's advisory review. {"verdict": "approve"|"reject"|"unavailable", "notes", "reasoning", "usage",
+    "by"}. Invalid JSON gets one retry (as a follow-up turn, so the cache doesn't replay it); a second failure or an
+    API error is "unavailable"."""
+    msgs = [{"role": "user", "content": REVIEW.format(data=json.dumps(data, indent=1))}]
+    usage, reasoning = {}, None
+    for _ in range(2):
+        try:
+            r = models.call("baseten", {"model": models.SPARK_OPEN, "messages": msgs, "max_tokens": REVIEW_MAX_TOKENS,
+                                        "timeout": 120}, mock="spark_open_review")
+        except Exception as e:  # incl. the daily budget: advisory, so release with an honest "unavailable"
+            return {"verdict": "unavailable", "notes": [f"Review call failed: {str(e)[:200]}"], "reasoning": reasoning,
+                    "usage": usage, "by": REVIEW_BY}
+        c, u = r["choices"][0], r.get("usage") or {}
+        m = c["message"]
+        usage = {"prompt_tokens": u.get("prompt_tokens"), "completion_tokens": u.get("completion_tokens"),
+                 "reasoning_tokens": (u.get("completion_tokens_details") or {}).get("reasoning_tokens")}
+        reasoning, text = m.get("reasoning_content"), (m.get("content") or "").strip()
+        try:
+            out = json.loads(text.removeprefix("```json").removeprefix("```").removesuffix("```"))
+            notes = out["notes"]
+            if out["verdict"] in ("approve", "reject") and isinstance(notes, list) and all(isinstance(n, str) for n in notes):
+                return {"verdict": out["verdict"], "notes": notes, "reasoning": reasoning, "usage": usage, "by": REVIEW_BY}
+        except (json.JSONDecodeError, KeyError, TypeError, AttributeError):
+            pass
+        if c.get("finish_reason") == "length":  # a retry would only be cut off again
+            return {"verdict": "unavailable", "notes": ["The reviewer ran out of room before giving a verdict."],
+                    "reasoning": reasoning, "usage": usage, "by": REVIEW_BY}
+        msgs = msgs + [{"role": "assistant", "content": text},
+                       {"role": "user", "content": 'That was not valid JSON. Answer with JSON only: '
+                                                   '{"verdict": "approve" | "reject", "notes": [string]}'}]
+    return {"verdict": "unavailable", "notes": ["The reviewer's answer was not valid JSON twice."], "reasoning": reasoning,
+            "usage": usage, "by": REVIEW_BY}
+
+
 def prompt(p: dict) -> str:
     r = chip_fill.reference(p["top"], p["front"], p["clearance"])
     pts = lambda poly: json.dumps([[round(a, 2), round(b, 2)] for a, b in poly])
@@ -137,7 +203,11 @@ def run(params: dict, max_attempts: int = MAX_ATTEMPTS):
                     "trimmed_mm_declared": d["trimmed_mm"], "trimmed_mm": first.get("trimmed_mm"),
                     "verify_secs": round(time.time() - t0 - row["call_secs"], 1)})
         if not err:
+            rv = review(review_data(params, d, results))
+            _log({"run": run_id, "review": rv["verdict"], "notes": rv["notes"], "usage": rv["usage"]})
+            yield {"type": "review", "run": run_id, **rv}
             yield {"type": "done", "ok": True, "attempts": n, "model": model, "rationale": d["rationale"],
+                   "review": rv["verdict"], "run": run_id,
                    "trimmed_mm": first["trimmed_mm"], "mate_path": first["mate_path"],
                    "stls": sorted(({"clearance": r["clearance"], "path": r["stl_path"]} for r in results),
                                   key=lambda s: s["clearance"])}
@@ -164,7 +234,23 @@ if __name__ == "__main__":  # offline self-check (MOCK_MODE): no model calls
     assert ev[-1]["ok"] and len(verifies) == want and [s["clearance"] for s in ev[-1]["stls"]] == [0.2, 0.4], ev[-1]
     assert not models.DEV_FAKE_FAILURES or (not verifies[0]["ok"] and "gap" in verifies[0]["error"])
 
-    real = models.call  # a non-JSON answer is a failed attempt; three failures end the run with no STL
+    (rv,) = [e for e in ev if e["type"] == "review"]
+    assert rv["verdict"] == ev[-1]["review"] == ("reject" if models.DEV_FAKE_FAILURES else "approve"), rv
+
+    real, seen = models.call, []  # review: bad JSON gets one follow-up turn, then "unavailable"; errors -> unavailable
+    models.call = lambda prov, pl, **kw: seen.append(len(pl["messages"])) or {
+        "choices": [{"message": {"content": "looks fine!", "reasoning_content": "hm"}}], "usage": {}}
+    assert review({})["verdict"] == "unavailable" and seen == [1, 3], seen
+    seen.clear()  # cut off mid-reasoning (finish_reason "length"): no retry, it would be cut off again
+    models.call = lambda prov, pl, **kw: seen.append(1) or {
+        "choices": [{"message": {"content": "", "reasoning_content": "hm"}, "finish_reason": "length"}], "usage": {}}
+    assert review({})["verdict"] == "unavailable" and seen == [1], seen
+    models.call = lambda *a, **kw: (_ for _ in ()).throw(TimeoutError("slow"))
+    assert review({})["verdict"] == "unavailable"
+    models.call = lambda *a, **kw: {"choices": [{"message": {"content": '{"verdict": "maybe", "notes": []}'}}]}
+    assert review({})["verdict"] == "unavailable"
+
+    # a non-JSON answer is a failed attempt; three failures end the run with no STL
     models.call = lambda *a, **kw: {"content": "Sure! Here's the code:", "usage": {}, "model": models.WONDER}
     ev = list(run(p, max_attempts=2))
     models.call = real

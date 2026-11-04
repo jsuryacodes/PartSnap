@@ -1,0 +1,41 @@
+[
+ {
+  "choices": [
+   {
+    "message": {
+     "role": "assistant",
+     "content": "{\"verdict\": \"reject\", \"notes\": [\"(Fake, DEV_FAKE_FAILURES) The front depth is under 1.5 mm: the piece may snap when glued.\"]}",
+     "reasoning_content": "Fake reject to exercise the hold-downloads UI."
+    },
+    "finish_reason": "stop"
+   }
+  ],
+  "usage": {
+   "prompt_tokens": 900,
+   "completion_tokens": 420,
+   "completion_tokens_details": {
+    "reasoning_tokens": 340
+   }
+  },
+  "fake": true
+ },
+ {
+  "choices": [
+   {
+    "message": {
+     "role": "assistant",
+     "content": "{\"verdict\": \"approve\", \"notes\": [\"Every verifier check passes at both clearances.\", \"Sizes match the measurements after clearance and trimming.\"]}",
+     "reasoning_content": "Placeholder until a real Spark Open review is captured."
+    },
+    "finish_reason": "stop"
+   }
+  ],
+  "usage": {
+   "prompt_tokens": 900,
+   "completion_tokens": 420,
+   "completion_tokens_details": {
+    "reasoning_tokens": 340
+   }
+  }
+ }
+]

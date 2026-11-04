@@ -202,7 +202,8 @@ def sam(image_jpeg: bytes, text: str | None = None, box: tuple | None = None, po
 def _log_usage(provider, model, source, usage, secs):
     row = {"ts": round(time.time()), "provider": provider, "model": model, "source": source,
            "prompt_tokens": usage.get("prompt_tokens"), "completion_tokens": usage.get("completion_tokens"),
-           "reasoning_tokens": usage.get("reasoning_tokens"), "secs": round(secs, 2)}
+           "reasoning_tokens": usage.get("reasoning_tokens") or (usage.get("completion_tokens_details") or {}).get("reasoning_tokens"),
+           "secs": round(secs, 2)}
     print(f"[model] {json.dumps(row)}")
     CACHE.mkdir(parents=True, exist_ok=True)
     with open(CACHE / "usage.jsonl", "a") as fh:

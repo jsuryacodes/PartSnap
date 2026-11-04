@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
-import { generate, type GenEvent, type Stl, type Usage, type VerifyResult } from './api'
+import { generate, reviewOverride, type GenEvent, type Stl, type Usage, type VerifyResult } from './api'
 import type { Params } from './Measure'
 import { ModelTag } from './ui'
 
 type Design = GenEvent & { type: 'design' }
 type Attempt = { n: number; by: string; design?: Design; verifies: VerifyResult[] }
-export type Done = { stls: Stl[]; mate_url?: string; verify: VerifyResult; attempts: number; by: string; rationale?: string; trimmed_mm?: number }
+type Review = GenEvent & { type: 'review' }
+export type Done = { review?: Review; overridden?: boolean; stls: Stl[]; mate_url?: string; verify: VerifyResult; attempts: number; by: string; rationale?: string; trimmed_mm?: number }
 
 const pad = (n: number) => String(n).padStart(2, '0')
 const tokens = (u: Usage) => [u.prompt_tokens && `${u.prompt_tokens} in`, u.completion_tokens && `${u.completion_tokens} out`,
@@ -15,6 +16,8 @@ export default function Generate({ fix, params, shape, onDone }: { fix: string; 
   const [attempts, setAttempts] = useState<Attempt[]>([])
   const [done, setDone] = useState<(GenEvent & { type: 'done' }) | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [review, setReview] = useState<Review | null>(null)
+  const [overriding, setOverriding] = useState(false)
   const started = useRef(false)
 
   useEffect(() => {
@@ -23,6 +26,7 @@ export default function Generate({ fix, params, shape, onDone }: { fix: string; 
     generate(fix, params, shape, (e) => {
       if (e.type === 'done') return setDone(e)
       if (e.type === 'error') return setError(e.message)
+      if (e.type === 'review') return setReview(e)
       setAttempts((a) => {
         if (e.type === 'attempt') return [...a, { n: e.n, by: e.by, verifies: [] }]
         return a.map((x) => x.n !== e.n ? x : e.type === 'design' ? { ...x, design: e } : { ...x, verifies: [...x.verifies, e] })
@@ -38,7 +42,7 @@ export default function Generate({ fix, params, shape, onDone }: { fix: string; 
       <p className="eyebrow">CAD agent · <span className="accent">{fix.replace('_', ' ')}</span></p>
       <h2 className="title">{heading}</h2>
       <p className="lede">The agent writes CadQuery from your outlines and measurements; every attempt is built and inspected, at {params.clearance} mm clearance and then the other setting. Failures go back to the agent with the inspector's notes.</p>
-      <div className="byline">CAD by <ModelTag>Muse Wonder</ModelTag> inspected by <span className="mono">CadQuery</span></div>
+      <div className="byline">CAD by <ModelTag>Muse Wonder</ModelTag> inspected by <span className="mono">CadQuery</span> reviewed by <ModelTag>Muse Spark Open</ModelTag></div>
 
       {attempts.map((a, i) => (
         <div key={a.n}>
@@ -48,15 +52,53 @@ export default function Generate({ fix, params, shape, onDone }: { fix: string; 
       ))}
       {error && <p className="notice">{error}</p>}
       {done && !done.ok && <p className="notice">Failed inspection after {done.attempts} attempts, so no STL was released. Check the measurements and try again.</p>}
-      {done?.ok && done.stls && passed && (
-        <div className="cta-bar">
-          <button className="btn btn-primary btn-block" onClick={() => onDone({ stls: done.stls!, mate_url: done.mate_url, verify: passed,
-            attempts: done.attempts, by: last?.design?.by ?? 'Muse Wonder', rationale: done.rationale, trimmed_mm: done.trimmed_mm })}>
-            View part &amp; download <span className="arrow">→</span>
-          </button>
-        </div>
-      )}
+      {passed && last!.verifies.filter((v) => v.ok).length === 2 && <ReviewCard r={review} />}
+      {done?.ok && done.stls && passed && (() => {
+        const finish = (overridden: boolean) => onDone({ stls: done.stls!, mate_url: done.mate_url, verify: passed, review: review ?? undefined,
+          overridden, attempts: done.attempts, by: last?.design?.by ?? 'Muse Wonder', rationale: done.rationale, trimmed_mm: done.trimmed_mm })
+        if (done.review !== 'reject') return (
+          <div className="cta-bar">
+            <button className="btn btn-primary btn-block" onClick={() => finish(false)}>View part &amp; download <span className="arrow">→</span></button>
+          </div>
+        )
+        return (
+          <div className="cta-bar">
+            <p className="notice" style={{ marginTop: 0, marginBottom: 10 }}>The reviewer has concerns, so the downloads are held. Read them above; if you still want the part, downloading is put on the record in the agent log.</p>
+            <button className="btn btn-ghost btn-block" disabled={overriding} onClick={async () => {
+              setOverriding(true)
+              try { await reviewOverride(done.run!); finish(true) } catch (e) { setError((e as Error).message); setOverriding(false) }
+            }}>{overriding ? 'Recording…' : 'Download anyway'} <span className="arrow">→</span></button>
+          </div>
+        )
+      })()}
     </div>
+  )
+}
+
+const STAMP = { approve: ['pass', 'APPROVED'], reject: ['fail', 'CONCERNS'], unavailable: ['', 'UNAVAILABLE'] } as const
+
+function ReviewCard({ r }: { r: Review | null }) {
+  return (
+    <>
+      <div className="handoff">↳ verified part sent to an independent reviewer</div>
+      <article className="attempt">
+        <header className="attempt-head">
+          <span className="eyebrow">Review <ModelTag>Muse Spark Open</ModelTag></span>
+          {r ? <span className={`stamp ${STAMP[r.verdict][0]}`}>{STAMP[r.verdict][1]}</span> : <span className="status">Muse Spark Open is reviewing</span>}
+        </header>
+        <div className="attempt-body">
+          {!r && <><div className="skeleton" /><div className="skeleton short" /></>}
+          {r && <ul className="review-notes">{r.notes.map((n) => <li key={n}>{n}</li>)}</ul>}
+          {r?.verdict === 'unavailable' && <p className="reasoning">Released without a review: it is advisory, and the part passed every geometric check.</p>}
+          {r?.reasoning && (
+            <details className="panel">
+              <summary>Reviewer's reasoning {r.usage && <span className="mono" style={{ fontSize: 11, color: 'var(--muted)' }}>{tokens(r.usage)}</span>}</summary>
+              <p className="reasoning" style={{ whiteSpace: 'pre-wrap' }}>{r.reasoning}</p>
+            </details>
+          )}
+        </div>
+      </article>
+    </>
   )
 }
 

@@ -57,14 +57,16 @@ export type VerifyResult = {
   trimmed_mm?: number
 }
 export type Usage = { prompt_tokens?: number | null; completion_tokens?: number | null; reasoning_tokens?: number | null }
+export type Verdict = 'approve' | 'reject' | 'unavailable'
 export type Stl = { clearance: number; url: string }
 export type GenEvent =
   | { type: 'attempt'; n: number; by: string }
   | { type: 'design'; n: number; model: string; by: string; rationale?: string; code?: string; code_hash?: string
       trimmed_mm?: number; usage: Usage; error?: string }
   | ({ type: 'verify'; n: number } & VerifyResult)
+  | { type: 'review'; run: string; verdict: Verdict; notes: string[]; reasoning?: string | null; usage: Usage; by: string }
   | { type: 'done'; ok: boolean; attempts: number; model?: string; rationale?: string; trimmed_mm?: number
-      stls?: Stl[]; mate_url?: string }
+      stls?: Stl[]; mate_url?: string; review?: Verdict; run?: string }
   | { type: 'error'; message: string }
 
 /** POST + read the server-sent event stream (EventSource can't POST). */
@@ -85,4 +87,10 @@ export async function generate(fix: string, params: Record<string, number>, shap
     buf = chunks.pop()!
     for (const c of chunks) if (c.startsWith('data: ')) onEvent(JSON.parse(c.slice(6)))
   }
+}
+
+/** Puts "downloaded despite the review's reject" on the record in the backend's agent log. */
+export async function reviewOverride(run: string) {
+  const r = await fetch(API + '/review-override', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ run }) })
+  if (!r.ok) throw await errorOf(r)
 }

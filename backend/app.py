@@ -211,6 +211,19 @@ def generate(req: GenerateReq, request: Request):
     return StreamingResponse(events(), media_type="text/event-stream", headers={"Cache-Control": "no-cache"})
 
 
+class Override(BaseModel):
+    run: str
+
+
+@app.post("/review-override")
+def review_override(req: Override):
+    """The user downloaded the STLs although Spark Open's review rejected them: on the record in the agent log."""
+    if not re.fullmatch(r"[0-9a-f]{8}-\d+", req.run):
+        raise HTTPException(400, "bad run id")
+    wonder_cad._log({"run": req.run, "override": "downloaded despite review reject", "ts": round(time.time())})
+    return {"ok": True}
+
+
 @app.get("/stl/{name}")
 def stl(name: str):
     path = OUT_DIR / name
