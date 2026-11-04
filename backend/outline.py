@@ -10,7 +10,7 @@ from PIL import Image, ImageDraw, ImageOps
 import models
 
 MAX_PX = 1024  # SAM input size; outline precision matters, so not smaller
-PROMPTS = ("exposed particleboard", "chipped wood edge")  # tried in order, stop at the first plausible mask
+PROMPTS = ("chipped wood edge",)  # tried in order, stop at the first plausible mask ("exposed particleboard" found nothing on the hero photos)
 AREA_RANGE = (0.001, 0.15)  # plausible chip area as a fraction of the photo (rejects "the whole table")
 TOLERANCE_PX = 1.0  # simplification tolerance in SAM-image px; small so the break stays irregular
 

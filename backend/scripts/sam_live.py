@@ -1,5 +1,5 @@
-"""Live SAM 3.1 check on the hero photos: per image, "exposed particleboard", and only if that finds no
-plausible mask, one retry with "chipped wood edge". At most 4 paid calls; no point fallback.
+"""Live SAM 3.1 check on the hero photos: one "chipped wood edge" text prompt per image (outline.PROMPTS).
+At most 2 paid calls; no point fallback.
 Saves overlays + the accepted raw responses (mock format) to samples/hero/out/.
     cd backend && .venv/bin/python scripts/sam_live.py
 Costs real credits: run once, don't loop it."""
