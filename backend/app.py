@@ -1,4 +1,5 @@
 """PartSnap API. Run: .venv/bin/uvicorn app:app --port 8000 (frontend proxies /api here)."""
+import base64
 import inspect
 import json
 import os
@@ -53,16 +54,44 @@ def _rate_limit(request: Request):
     q.append(now)
 
 MAX_PHOTO = 10 * 1024 * 1024
-VIEWS = {
-    "top": "a top-down view of the damaged corner, camera looking straight down, both edges visible",
-    "side": "a side view of the edge, camera level with the tabletop, the thickness visible",
-    "closeup": "a close-up of the damaged area, in focus and filling most of the frame",
+VIEWS = {  # photos 1 and 2 are checked; the SAM frame (fixes/chip_fill.py) needs the edge level, placed as below
+    "top": "a top view: camera straight above the chipped edge, looking straight down; the table's front edge runs "
+           "left to right across the photo, level, in the lower part of the frame, with the chip on it",
+    "side": "a front view: camera level with the tabletop, looking straight at the front face of the edge; the top "
+            "edge runs left to right across the photo, level, with the chip on it",
 }
+CHECK_RULES = """- The view: {straight}.
+- The chip is roughly centred and in focus.
+- No glare or bright reflection on the chip.
+- No hand or fingers in the photo.
+- Close enough: the chip spans at least about a fifth of the photo's width."""
+STRAIGHT = {"top": "straight above, looking down (not at an angle)", "side": "straight on, level with the tabletop"}
 
-CHECK_PROMPT = """You check photos for a repair app. The user was asked for: {want}.
-Does the photo match that view, and is the damage clearly visible?
-Answer with JSON only: {{"ok": true|false, "retake_instruction": null | "<one short sentence telling the user how to retake>",
- "rationale": "<one short sentence for the user: what you saw>"}}"""
+CHECK_PROMPT = """You check a photo for PartSnap, a repair app that 3D-prints the missing piece of a chipped table edge from
+two photos (top and front) and the user's ruler measurements. The user was asked for: {want}.
+Rules:
+{rules}
+Pass only if every rule holds. Keep your reasoning brief.
+Answer with JSON only, no markdown: {{"ok": true|false, "retake_instruction": null | "<if not ok: one short sentence
+telling the user what to change, e.g. 'Move closer so the chip fills more of the frame.'>", "rationale": "<one short
+sentence for the user: what you saw>"}}"""
+CHECK_BY = "Muse Spark Open"
+
+
+def _check(view: str, jpeg: bytes) -> dict:
+    """Spark Open (Baseten) checks one photo against the rules; returns its real reasoning too."""
+    prompt = CHECK_PROMPT.format(want=VIEWS[view], rules=CHECK_RULES.format(straight=STRAIGHT[view]))
+    image = {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + base64.b64encode(jpeg).decode()}}
+    r = models.call("baseten", {"model": models.SPARK_OPEN, "max_tokens": 4000, "timeout": 90, "messages": [
+        {"role": "user", "content": [{"type": "text", "text": prompt}, image]}]}, mock="check_photo_open")
+    m = r["choices"][0]["message"]
+    text = (m.get("content") or "").strip().removeprefix("```json").removeprefix("```").removesuffix("```")
+    try:
+        out = json.loads(text)
+        return {"ok": out["ok"] is True, "retake_instruction": out.get("retake_instruction"),
+                "rationale": out.get("rationale"), "reasoning": m.get("reasoning_content"), "by": CHECK_BY}
+    except (json.JSONDecodeError, KeyError, TypeError):
+        raise HTTPException(502, "The photo check didn't give a clear answer. Check again, or retake the photo.")
 
 
 async def _read(photo: UploadFile) -> bytes:
@@ -75,15 +104,13 @@ async def _read(photo: UploadFile) -> bytes:
 @app.post("/check-photo")
 async def check_photo(view: str = Form(...), photo: UploadFile = File(...)):
     if view not in VIEWS:
-        raise HTTPException(400, f"view must be one of {list(VIEWS)}")
-    out = models.meta_json(CHECK_PROMPT.format(want=VIEWS[view]), [await _read(photo)], mock="check_photo")
-    return {"ok": bool(out.get("ok")), "retake_instruction": out.get("retake_instruction"),
-            "rationale": out.get("rationale"), "by": "Muse Spark"}
+        raise HTTPException(400, f"view must be one of {list(VIEWS)} (the context photo isn't checked)")
+    return await run_in_threadpool(_check, view, await _read(photo))  # model calls block: keep the event loop free
 
 
 DIAGNOSE_PROMPT = """You diagnose damaged household objects for a 3D-printed repair app.
 Photos, in order: top view (looking down at the chipped edge), front view (looking at the edge's front face),
-close-up of the damage.
+a context photo (stepped back: the whole edge and what's around it).
 Available fix types (for a chipped edge, pick chip_fill unless the chip can't be filled):
 {fixes}
 Pick the fix type and explain the damage and the fix in 1–2 sentences. Choose which of that fix's parameters the user
@@ -99,7 +126,7 @@ Answer with JSON only:
 async def diagnose(top: UploadFile = File(...), side: UploadFile = File(...), closeup: UploadFile = File(...)):
     fixes = "\n".join(f"- {k}: {m.__doc__.strip().splitlines()[0]} Parameters: {list(m.PARAMS)}" for k, m in FIXES.items())
     images = [await _read(f) for f in (top, side, closeup)]
-    out = models.meta_json(DIAGNOSE_PROMPT.format(fixes=fixes), images, mock="diagnose")
+    out = await run_in_threadpool(models.meta_json, DIAGNOSE_PROMPT.format(fixes=fixes), images, mock="diagnose")
     mod = FIXES.get(out.get("fix_type"))
     if mod is None:
         raise HTTPException(502, f"model picked an unknown fix type: {out.get('fix_type')!r}")

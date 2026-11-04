@@ -3,20 +3,21 @@ import { checkPhoto, type Photos, type View } from './api'
 import { ModelTag } from './ui'
 
 type Target = 'flat' | 'upright' | null
-const SHOTS: { view: View; title: string; instruction: string; target: Target }[] = [
-  { view: 'top', title: 'Top view', target: 'flat',
-    instruction: 'Hold the phone flat above the corner, camera down. Line the corner up with the guide.' },
-  { view: 'side', title: 'Side view', target: 'upright',
-    instruction: 'Hold the phone upright, level with the tabletop. Fit the edge inside the band.' },
-  { view: 'closeup', title: 'Damage close-up', target: null,
-    instruction: 'Get close to the chip so it fills the circle.' },
+const SHOTS: { view: View; title: string; instruction: string; target: Target; check: boolean }[] = [
+  { view: 'top', title: 'Top view', target: 'flat', check: true,
+    instruction: 'Hold the phone flat, straight above the chip, camera down. Table edge along the guide line, chip in the middle.' },
+  { view: 'side', title: 'Front view', target: 'upright', check: true,
+    instruction: 'Hold the phone upright, level with the tabletop, facing the front of the edge. Top edge along the guide line, chip in the middle.' },
+  { view: 'closeup', title: 'Context', target: null, check: false,
+    instruction: 'Step back and take the whole table edge with the chip in view. Not checked: it only helps the diagnosis.' },
 ]
 const TOLERANCE = 10 // degrees
+const USE_ANYWAY_AFTER = 2 // failed checks
 
 const GHOST_LABEL: Record<View, { text: string; x: number; y: number }> = {
-  top: { text: 'ALIGN CORNER', x: 30, y: 35 },
-  side: { text: 'TABLE EDGE', x: 30, y: 45 },
-  closeup: { text: 'DAMAGE', x: 50, y: 22 },
+  top: { text: 'TABLE EDGE · CHIP HERE', x: 50, y: 66 },
+  side: { text: 'TOP EDGE · CHIP HERE', x: 50, y: 46 },
+  closeup: { text: 'WHOLE EDGE IN VIEW', x: 50, y: 22 },
 }
 
 /** Ghost frames, in the same 0–100 photo coordinates the measure overlays use. */
@@ -26,16 +27,17 @@ export function Ghost({ view }: { view: View }) {
     <>
       <svg className="overlay" viewBox="0 0 100 100" preserveAspectRatio="none">
         {view === 'top' && <>
-          <polygon points="30,35 100,35 100,100 30,100" className="ghost-fill" />
-          <polyline points="30,100 30,35 100,35" className="ghost" />
+          <rect x="0" y="0" width="100" height="78" className="ghost-fill" />
+          <line x1="0" y1="78" x2="100" y2="78" className="ghost" />
+          <ellipse cx="50" cy="74" rx="14" ry="6" className="ghost" />
         </>}
         {view === 'side' && <>
-          <rect x="30" y="45" width="70" height="12" className="ghost-fill" />
-          <rect x="30" y="45" width="70" height="12" className="ghost" />
+          <rect x="0" y="48" width="100" height="22" className="ghost-fill" />
+          <line x1="0" y1="48" x2="100" y2="48" className="ghost" />
+          <ellipse cx="50" cy="52" rx="14" ry="5" className="ghost" />
         </>}
-        {view === 'closeup' && <circle cx="50" cy="50" r="28" className="ghost" />}
       </svg>
-      <span className="ghost-label" style={{ left: `${l.x}%`, top: `${l.y}%` }}>{l.text}</span>
+      <span className="ghost-label" style={{ left: `${l.x}%`, top: `${l.y}%`, transform: 'translate(-50%, -140%)' }}>{l.text}</span>
       <i className="vf tl" /><i className="vf tr" /><i className="vf bl" /><i className="vf br" />
     </>
   )
@@ -90,14 +92,19 @@ async function toJpeg(src: CanvasImageSource, w: number, h: number): Promise<Blo
   return new Promise((ok) => c.toBlob((b) => ok(b!), 'image/jpeg', 0.85))
 }
 
-export default function Capture({ onDone }: { onDone: (p: Photos) => void }) {
+type Check = Awaited<ReturnType<typeof checkPhoto>>
+
+export default function Capture({ onDone, onCancel }: { onDone: (p: Photos) => void; onCancel: () => void }) {
   const [idx, setIdx] = useState(0)
   const [photos, setPhotos] = useState<Partial<Photos>>({})
   // ponytail: thumbnail object URLs are never revoked; three small images per session
   const [thumbs, setThumbs] = useState<Partial<Record<View, string>>>({})
   const [camera, setCamera] = useState<'starting' | 'on' | 'off'>('starting')
+  const [pending, setPending] = useState<{ blob: Blob; url: string } | null>(null) // taken, not yet accepted
   const [checking, setChecking] = useState(false)
-  const [retake, setRetake] = useState<string | null>(null)
+  const [check, setCheck] = useState<Check | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [fails, setFails] = useState(0) // failed checks for this shot
   const video = useRef<HTMLVideoElement>(null)
   const tilt = useTilt()
   const shot = SHOTS[idx]
@@ -113,19 +120,34 @@ export default function Capture({ onDone }: { onDone: (p: Photos) => void }) {
   const err = tilt.mode === 'on' && tilt.o && shot.target ? tiltError(shot.target, tilt.o) : null
   const levelOk = err === null || err <= TOLERANCE
 
-  async function submit(blob: Blob) {
-    setChecking(true)
-    setRetake(null)
+  function accept(blob: Blob) {
+    const next = { ...photos, [shot.view]: blob }
+    setPhotos(next)
+    setThumbs((t) => ({ ...t, [shot.view]: URL.createObjectURL(blob) }))
+    setPending(null); setCheck(null); setError(null); setFails(0)
+    if (idx + 1 < SHOTS.length) setIdx(idx + 1)
+    else onDone(next as Photos)
+  }
+
+  function took(blob: Blob) {
+    if (!shot.check) return accept(blob)
+    setPending({ blob, url: URL.createObjectURL(blob) }); setCheck(null); setError(null)
+  }
+
+  function retake() {
+    if (pending) URL.revokeObjectURL(pending.url)
+    setPending(null); setCheck(null); setError(null)
+  }
+
+  async function runCheck() {
+    setChecking(true); setError(null)
     try {
-      const r = await checkPhoto(shot.view, blob)
-      if (!r.ok) return setRetake([r.retake_instruction ?? 'Please retake this photo.', r.rationale].filter(Boolean).join(' '))
-      const next = { ...photos, [shot.view]: blob }
-      setPhotos(next)
-      setThumbs((t) => ({ ...t, [shot.view]: URL.createObjectURL(blob) }))
-      if (idx + 1 < SHOTS.length) setIdx(idx + 1)
-      else onDone(next as Photos)
+      const r = await checkPhoto(shot.view, pending!.blob)
+      setCheck(r)
+      if (!r.ok) setFails((n) => n + 1)
     } catch (e) {
-      setRetake((e as Error).message)
+      setError((e as Error).message)
+      setFails((n) => n + 1)
     } finally {
       setChecking(false)
     }
@@ -133,7 +155,7 @@ export default function Capture({ onDone }: { onDone: (p: Photos) => void }) {
 
   async function snap() {
     const v = video.current!
-    submit(await toJpeg(v, v.videoWidth, v.videoHeight))
+    took(await toJpeg(v, v.videoWidth, v.videoHeight))
   }
 
   async function pick(e: React.ChangeEvent<HTMLInputElement>) {
@@ -141,10 +163,10 @@ export default function Capture({ onDone }: { onDone: (p: Photos) => void }) {
     e.target.value = ''
     if (!f) return
     const bmp = await createImageBitmap(f)
-    submit(await toJpeg(bmp, bmp.width, bmp.height))
+    took(await toJpeg(bmp, bmp.width, bmp.height))
   }
 
-  const hint = checking ? 'Inspecting photo…'
+  const hint = pending ? (checking ? 'Muse Spark Open is checking the photo…' : '')
     : err !== null && !levelOk ? `Tilt ${Math.round(err)}° · level the phone`
     : err !== null ? 'Level ✓ · take the shot'
     : camera === 'off' ? 'No camera found · upload a photo instead' : ''
@@ -154,45 +176,74 @@ export default function Capture({ onDone }: { onDone: (p: Photos) => void }) {
       <div key={shot.view} style={{ animation: 'rise .4s var(--ease) both' }}>
       <div className="shotbar">
         <p className="eyebrow">Shot <span className="accent">{idx + 1}</span> / {SHOTS.length}</p>
-        <p className="eyebrow">{shot.target === 'flat' ? 'Target 0° · flat' : shot.target === 'upright' ? 'Target 90° · upright' : 'Any angle'}</p>
+        <button className="linkbtn" onClick={onCancel}>Cancel</button>
       </div>
       <h2 className="title">{shot.title}</h2>
       <p className="lede">{shot.instruction}</p>
       </div>
 
       <div className="viewport">
-        {camera !== 'on' && <div className="placeholder">{camera === 'starting' ? 'Starting camera…' : 'Camera unavailable'}</div>}
-        <video ref={video} autoPlay playsInline muted style={{ display: camera === 'on' ? 'block' : 'none' }} />
-        <Ghost view={shot.view} />
-        {err !== null && <Level target={shot.target!} o={tilt.o!} ok={levelOk} err={err} />}
-        {checking && <div className="scan"><span>Inspecting · Muse Spark</span></div>}
+        {camera !== 'on' && !pending && <div className="placeholder">{camera === 'starting' ? 'Starting camera…' : 'Camera unavailable'}</div>}
+        <video ref={video} autoPlay playsInline muted style={{ display: camera === 'on' && !pending ? 'block' : 'none' }} />
+        {pending && <img src={pending.url} alt={`${shot.title}, taken`} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />}
+        {!pending && <Ghost view={shot.view} />}
+        {!pending && err !== null && <Level target={shot.target!} o={tilt.o!} ok={levelOk} err={err} />}
+        {checking && <div className="scan"><span>Checking · Muse Spark Open</span></div>}
       </div>
 
-      {tilt.mode === 'ask' && shot.target && (
+      {!pending && tilt.mode === 'ask' && shot.target && (
         <button className="btn btn-ghost btn-block" style={{ marginTop: 12 }} onClick={tilt.enable}>Enable tilt level</button>
       )}
-      {retake && <p className="notice">{retake}</p>}
-
-      <div className="shutter-row">
-        <div className="thumbs" aria-label="Shots taken">
-          {SHOTS.map((s, i) => (
-            <span key={s.view} className={thumbs[s.view] ? 'done' : i === idx ? 'now' : ''}
-              style={thumbs[s.view] ? { backgroundImage: `url(${thumbs[s.view]})` } : undefined}>{i + 1}</span>
-          ))}
+      {error && <p className="notice">{error}</p>}
+      {check && (
+        <div className={check.ok ? 'reasoning' : 'notice'} style={{ marginTop: 12 }}>
+          <strong>{check.ok ? 'Looks good. ' : `${check.retake_instruction ?? 'Please retake this photo.'} `}</strong>{check.rationale}
+          {check.reasoning && (
+            <details className="panel" style={{ marginTop: 8 }}>
+              <summary>Spark Open's reasoning</summary>
+              <p className="reasoning" style={{ whiteSpace: 'pre-wrap' }}>{check.reasoning}</p>
+            </details>
+          )}
         </div>
-        {camera === 'on'
-          ? <button className="shutter" onClick={snap} disabled={checking || !levelOk} aria-label="Take photo" />
-          : <label className="btn btn-primary" aria-disabled={checking}>
-              {checking ? 'Checking…' : 'Choose photo'}
-              <input type="file" accept="image/*" capture="environment" onChange={pick} hidden disabled={checking} />
-            </label>}
-        {camera === 'on'
-          ? <label className="linkbtn upload">Upload<input type="file" accept="image/*" onChange={pick} hidden disabled={checking} /></label>
-          : <span />}
-      </div>
-      <p className={`hint ${err !== null && !levelOk ? 'warn' : ''}`}>{hint}</p>
+      )}
 
-      <div className="byline" style={{ justifyContent: 'center' }}>Each photo checked by <ModelTag>Muse Spark</ModelTag></div>
+      {pending ? (
+        <div className="cta-bar" style={{ display: 'grid', gap: 10 }}>
+          {check?.ok
+            ? <button className="btn btn-primary btn-block" onClick={() => accept(pending.blob)}>Next <span className="arrow">→</span></button>
+            : (check || error)
+              ? <button className="btn btn-primary btn-block" onClick={retake}>Retake</button>
+              : <button className="btn btn-primary btn-block" onClick={runCheck} disabled={checking}>{checking ? 'Checking…' : 'Check photo'}</button>}
+          {(check || error) && !check?.ok && fails < USE_ANYWAY_AFTER && !checking &&
+            <button className="btn btn-ghost btn-block" onClick={runCheck}>Check again</button>}
+          {!check?.ok && fails >= USE_ANYWAY_AFTER && !checking &&
+            <button className="btn btn-ghost btn-block" onClick={() => accept(pending.blob)}>Use anyway <span className="arrow">→</span></button>}
+          {!check && !error && <button className="btn btn-ghost btn-block" onClick={retake} disabled={checking}>Retake</button>}
+        </div>
+      ) : (
+        <div className="shutter-row">
+          <div className="thumbs" aria-label="Shots taken">
+            {SHOTS.map((s, i) => (
+              <span key={s.view} className={thumbs[s.view] ? 'done' : i === idx ? 'now' : ''}
+                style={thumbs[s.view] ? { backgroundImage: `url(${thumbs[s.view]})` } : undefined}>{i + 1}</span>
+            ))}
+          </div>
+          {camera === 'on'
+            ? <button className="shutter" onClick={snap} disabled={!levelOk} aria-label="Take photo" />
+            : <label className="btn btn-primary">
+                Choose photo
+                <input type="file" accept="image/*" capture="environment" onChange={pick} hidden />
+              </label>}
+          {camera === 'on'
+            ? <label className="linkbtn upload">Upload<input type="file" accept="image/*" onChange={pick} hidden /></label>
+            : <span />}
+        </div>
+      )}
+      <p className={`hint ${err !== null && !levelOk && !pending ? 'warn' : ''}`}>{hint}</p>
+
+      <div className="byline" style={{ justifyContent: 'center' }}>
+        {shot.check ? <>Checked by <ModelTag>Muse Spark Open</ModelTag></> : 'Not checked · used for the diagnosis only'}
+      </div>
     </div>
   )
 }

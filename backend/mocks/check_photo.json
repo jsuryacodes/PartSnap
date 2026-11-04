@@ -1,4 +1,0 @@
-[
-  {"fake": true, "content": "{\"ok\": false, \"retake_instruction\": \"Move closer so the chip fills more of the frame.\", \"rationale\": \"The chip is only a few pixels tall from this distance.\"}", "usage": {"prompt_tokens": 1450, "completion_tokens": 40}},
-  {"content": "{\"ok\": true, \"retake_instruction\": null, \"rationale\": \"The chipped edge is sharp, square to the camera and well lit.\"}", "usage": {"prompt_tokens": 1450, "completion_tokens": 34}}
-]

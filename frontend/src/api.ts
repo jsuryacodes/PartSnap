@@ -19,7 +19,7 @@ export async function checkPhoto(view: View, photo: Blob) {
   const f = new FormData()
   f.append('view', view)
   f.append('photo', photo, `${view}.jpg`)
-  return postForm<{ ok: boolean; retake_instruction: string | null; rationale?: string | null; by: string }>('/check-photo', f)
+  return postForm<{ ok: boolean; retake_instruction: string | null; rationale?: string | null; reasoning?: string | null; by: string }>('/check-photo', f)
 }
 
 type Pt = [number, number]

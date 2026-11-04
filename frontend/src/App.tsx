@@ -53,7 +53,7 @@ export default function App() {
           </Suspense>
         ) : <>
           {!started && <Landing onStart={() => { setStarted(true); top() }} />}
-          {started && !photos && <Capture onDone={(p) => { setPhotos(p); top() }} />}
+          {started && !photos && <Capture onDone={(p) => { setPhotos(p); top() }} onCancel={restart} />}
           {photos && !job && <Measure photos={photos} onDone={(d, params) => { setJob({ d, params }); top() }} />}
           {job && !done && <Generate fix={job.d.fix_type} params={job.params} shape={job.d.shape} onDone={(d) => { setDone(d); top() }} />}
           {job && done && <Result done={done} params={job.params} onRestart={restart} />}

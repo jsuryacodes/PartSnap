@@ -1,0 +1,4 @@
+[
+ {"fake": true, "choices": [{"message": {"role": "assistant", "content": "{\"ok\": false, \"retake_instruction\": \"Move closer so the chip fills more of the frame.\", \"rationale\": \"(Fake, DEV_FAKE_FAILURES) The chip is small in the frame.\"}", "reasoning_content": "Fake failure to exercise retake and 'Use anyway'."}, "finish_reason": "stop"}], "usage": {"prompt_tokens": 700, "completion_tokens": 300, "completion_tokens_details": {"reasoning_tokens": 250}}},
+ {"choices": [{"message": {"role": "assistant", "content": "{\"ok\": true, \"retake_instruction\": null, \"rationale\": \"The chipped edge is level, centred, sharp and free of glare.\"}", "reasoning_content": "Mock: the view matches, the chip is centred and in focus, no glare, no hand, close enough."}, "finish_reason": "stop"}], "usage": {"prompt_tokens": 700, "completion_tokens": 300, "completion_tokens_details": {"reasoning_tokens": 250}}}
+]

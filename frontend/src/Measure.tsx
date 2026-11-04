@@ -5,7 +5,7 @@ import { ArrowDefs, ModelTag } from './ui'
 export type Params = Record<string, number>
 type Pt = [number, number]
 
-const VIEW_NAME: Record<View, string> = { top: 'Top view', side: 'Front view', closeup: 'Close-up' }
+const VIEW_NAME: Record<View, string> = { top: 'Top view', side: 'Front view', closeup: 'Context' }
 const VIEWS = Object.keys(VIEW_NAME) as View[]
 
 function useSize<T extends HTMLElement>() {
