@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { diagnose, type Diagnosis, type Measurement, type Photos, type View } from './api'
+import { toJpeg } from './Capture'
 import { ArrowDefs, ModelTag } from './ui'
 
 export type Params = Record<string, number>
@@ -102,15 +103,26 @@ export default function Measure({ photos, onDone }: { photos: Photos; onDone: (d
     return () => Object.values(u).forEach(URL.revokeObjectURL)
   }, [photos])
 
+  const [askExtra, setAskExtra] = useState(true) // false once the extra shot was taken or skipped
+  const run = (extra?: { blob: Blob; what: string }) => diagnose(photos, extra).then((r) => {
+    setD(r)
+    setValues(Object.fromEntries(Object.entries(r.settings).map(([k, v]) => [k, String(v)])))
+  }).catch((e) => setError(e.message))
   const started = useRef(false)
   useEffect(() => {
     if (started.current) return // StrictMode double-run would spend a second Muse Spark call
     started.current = true
-    diagnose(photos).then((r) => {
-      setD(r)
-      setValues(Object.fromEntries(Object.entries(r.settings).map(([k, v]) => [k, String(v)])))
-    }).catch((e) => setError(e.message))
+    run()
   }, [photos])
+
+  async function takeExtra(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0]
+    if (!f || !d?.extra_shot) return
+    const what = d.extra_shot.what
+    setAskExtra(false); setD(null)
+    const bmp = await createImageBitmap(f)
+    run({ blob: await toJpeg(bmp, bmp.width, bmp.height), what })
+  }
 
   if (error) return (
     <div className="screen"><p className="eyebrow">Diagnosis</p><h2 className="title">Something went wrong</h2><p className="notice">{error}</p></div>
@@ -122,6 +134,22 @@ export default function Measure({ photos, onDone }: { photos: Photos; onDone: (d
       <p className="lede">Finding the damage, choosing a fix, and working out what to measure.</p>
       <div className="loader" />
       <div className="byline"><ModelTag>Muse Spark</ModelTag><ModelTag>SAM 3.1</ModelTag></div>
+    </div>
+  )
+
+  if (askExtra && d.extra_shot) return (
+    <div className="screen">
+      <p className="eyebrow">Diagnosis · one more photo</p>
+      <h2 className="title">{d.extra_shot.what}</h2>
+      {d.extra_shot.reason && <p className="lede">Why: {d.extra_shot.reason}</p>}
+      <p className="reasoning">It's only for the diagnosis; sizes always come from your ruler.</p>
+      <div className="byline">Asked by <ModelTag>{d.by.diagnosis}</ModelTag></div>
+      <div className="cta-bar" style={{ display: 'grid', gap: 10 }}>
+        <label className="btn btn-primary btn-block">Take photo <span className="arrow">→</span>
+          <input type="file" accept="image/*" capture="environment" onChange={takeExtra} hidden />
+        </label>
+        <button className="btn btn-ghost btn-block" onClick={() => setAskExtra(false)}>Skip</button>
+      </div>
     </div>
   )
 

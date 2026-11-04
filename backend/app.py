@@ -117,16 +117,28 @@ Pick the fix type and explain the damage and the fix in 1–2 sentences. Choose 
 must measure with a ruler (from its list; clearance is a print setting, not a measurement). The app draws where to
 measure on the photos itself; for each you write a short label (2–4 words) and one short sentence for the user on why
 the fix needs it.
+{extra}
 Answer with JSON only:
 {{"fix_type": str, "title": str, "explanation": str, "rationale": "<one short sentence for the user: why this fix>",
- "measurements": [{{"key": str, "label": str, "hint": "<why we need this>", "example": number}}]}}"""
+ "measurements": [{{"key": str, "label": str, "hint": "<why we need this>", "example": number}}],
+ "extra_shot": null | {{"what": "<one short sentence: what to photograph>", "reason": "<one short sentence: why it helps>"}}}}"""
+EXTRA_ASK = """If the photos leave the diagnosis genuinely unclear (e.g. whether it is a clean chip, or what the material
+is), you may ask for ONE extra photo in "extra_shot"; it is for the diagnosis only, never for sizes. Otherwise null."""
+EXTRA_GOT = """A fourth photo is attached: the extra shot you asked for ("{what}"). Use it for the diagnosis.
+Set "extra_shot" to null: no more photos."""
 
 
 @app.post("/diagnose")
-async def diagnose(top: UploadFile = File(...), side: UploadFile = File(...), closeup: UploadFile = File(...)):
+async def diagnose(top: UploadFile = File(...), side: UploadFile = File(...), closeup: UploadFile = File(...),
+                   extra: UploadFile | None = File(None), extra_what: str = Form("")):
+    """extra: the one extra photo Spark asked for (extra_shot) on a first call; at most one, so none is asked after."""
     fixes = "\n".join(f"- {k}: {m.__doc__.strip().splitlines()[0]} Parameters: {list(m.PARAMS)}" for k, m in FIXES.items())
-    images = [await _read(f) for f in (top, side, closeup)]
-    out = await run_in_threadpool(models.meta_json, DIAGNOSE_PROMPT.format(fixes=fixes), images, mock="diagnose")
+    images = [await _read(f) for f in (top, side, closeup, extra) if f is not None]
+    hint = EXTRA_GOT.format(what=extra_what[:200]) if extra else EXTRA_ASK
+    out = await run_in_threadpool(models.meta_json, DIAGNOSE_PROMPT.format(fixes=fixes, extra=hint), images, mock="diagnose")
+    ask = out.get("extra_shot")
+    out["extra_shot"] = None if extra or not isinstance(ask, dict) or not ask.get("what") else \
+        {"what": str(ask["what"]), "reason": str(ask.get("reason") or "")}
     mod = FIXES.get(out.get("fix_type"))
     if mod is None:
         raise HTTPException(502, f"model picked an unknown fix type: {out.get('fix_type')!r}")

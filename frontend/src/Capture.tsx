@@ -83,7 +83,7 @@ function tiltError(target: Target, o: { beta: number; gamma: number }) {
   return 0
 }
 
-async function toJpeg(src: CanvasImageSource, w: number, h: number): Promise<Blob> {
+export async function toJpeg(src: CanvasImageSource, w: number, h: number): Promise<Blob> {
   const s = Math.min(1, 1600 / Math.max(w, h))
   const c = document.createElement('canvas')
   c.width = Math.round(w * s)

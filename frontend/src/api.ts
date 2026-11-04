@@ -36,11 +36,14 @@ export type Diagnosis = {
   param_help: Record<string, string>
   shape: unknown // passed back to /generate untouched; the backend turns the outlines into mm
   by: { diagnosis: string; segmentation: string }
+  extra_shot?: { what: string; reason: string } | null // Spark may ask for one more photo, for the diagnosis only
 }
 
-export async function diagnose(photos: Photos) {
+/** extra: the one extra photo Spark asked for (extra_shot), sent back with what it asked for. */
+export async function diagnose(photos: Photos, extra?: { blob: Blob; what: string }) {
   const f = new FormData()
   for (const [view, blob] of Object.entries(photos)) f.append(view, blob, `${view}.jpg`)
+  if (extra) { f.append('extra', extra.blob, 'extra.jpg'); f.append('extra_what', extra.what) }
   return postForm<Diagnosis>('/diagnose', f)
 }
 
