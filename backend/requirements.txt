@@ -6,3 +6,4 @@ uvicorn
 httpx
 python-dotenv
 python-multipart
+meta-sam-parser==0.1.0

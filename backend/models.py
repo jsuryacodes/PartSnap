@@ -56,7 +56,11 @@ def _meta(payload):
     content = [{"type": "input_text", "text": payload["prompt"]}] + [
         {"type": "input_image", "image_url": f"data:image/jpeg;base64,{b}"} for b in payload.get("images", [])]
     body = {"model": payload["model"], "input": [{"type": "message", "role": "user", "content": content}],
-            "reasoning": {"effort": payload.get("effort", "low"), "summary": "auto"}, "store": False}
+            "store": False}
+    if payload["model"] != SAM:  # SAM doesn't reason
+        body["reasoning"] = {"effort": payload.get("effort", "low"), "summary": "auto"}
+    if payload.get("metadata"):
+        body["metadata"] = payload["metadata"]
     if payload.get("max_output_tokens"):
         body["max_output_tokens"] = payload["max_output_tokens"]  # includes reasoning tokens
     if payload.get("schema"):
@@ -146,6 +150,49 @@ def meta_json(prompt: str, images: list[bytes], mock: str, model: str = SPARK,
     return json.loads(text.removeprefix("```json").removeprefix("```").removesuffix("```"))
 
 
+def sam(image_jpeg: bytes, text: str | None = None, box: tuple | None = None, points: list | tuple = (),
+        mock: str = "sam", timeout: int = 300) -> dict:
+    """SAM 3.1 on one image (JPEG bytes, already upright; see outline.prep_image).
+    Prompt with a noun phrase `text`, OR a `box` (x1, y1, x2, y2 px, half-open) and/or `points`
+    [(x, y, positive: bool)]; the API rejects mixing the two kinds.
+    Returns {"image_size": (w, h), "usage", "objects": [{"id", "box": [x1, y1, x2, y2] half-open px,
+    "score" (0-1 or None), "mask": (h, w) bool array, "contours": [[(x, y) px, ...], ...]}]}."""
+    import io
+    import numpy as np
+    from meta_sam_parser import (CompletedOutcome, FramePrompt, PromptBox, PromptObject, PromptPoint,
+                                 SegmentationMaskRecord, build_object_prompt, decode_mask_to_raster,
+                                 decode_mask_to_svg_path, image_segmentation_format)
+    from PIL import Image
+
+    w, h = Image.open(io.BytesIO(image_jpeg)).size
+    if bool(text) == bool(box or points):
+        raise ValueError("give either a text prompt or box/points")
+    prompt = text or build_object_prompt(size=(w, h), objects=[PromptObject(id=1, prompts=[FramePrompt(
+        box=PromptBox(*box) if box else None,
+        points=[PromptPoint(int(x), int(y), "positive" if pos else "negative") for x, y, pos in points])])])
+    resp = call("meta", {"model": SAM, "prompt": prompt, "images": [base64.b64encode(image_jpeg).decode()],
+                         "metadata": {"include_confidence": "true"}, "timeout": timeout}, mock)
+
+    parser = image_segmentation_format().create_parser()
+    parser.push(resp["content"])
+    objects = []
+    for rec in parser.finish(CompletedOutcome()).result.records:
+        if not isinstance(rec, SegmentationMaskRecord):
+            continue
+        b, m = rec.bounds, rec.mask
+        x0, y0, bw, bh = int(b.left), int(b.top), int(b.right - b.left), int(b.bottom - b.top)
+        sx, sy = bw / m.width, bh / m.height  # the mask raster is box-local and smaller than the box
+        local = np.frombuffer(decode_mask_to_raster(m), np.uint8).reshape(m.height, m.width)
+        full = np.zeros((h, w), bool)
+        full[y0:y0 + bh, x0:x0 + bw] = np.asarray(Image.fromarray(local * 255).resize((bw, bh), Image.NEAREST)) > 0
+        contours = [[(x0 + (float(x) + 0.5) * sx, y0 + (float(y) + 0.5) * sy)  # raster pixel c spans c±0.5
+                     for x, y in (pt.split() for pt in sub.strip().rstrip("Z").split("L"))]
+                    for sub in decode_mask_to_svg_path(m).split("M") if sub.strip()]
+        objects.append({"id": rec.object_id, "box": [x0, y0, x0 + bw, y0 + bh], "score": rec.confidence,
+                        "mask": full, "contours": contours})
+    return {"image_size": (w, h), "objects": objects, "usage": resp.get("usage")}
+
+
 def _log_usage(provider, model, source, usage, secs):
     row = {"ts": round(time.time()), "provider": provider, "model": model, "source": source,
            "prompt_tokens": usage.get("prompt_tokens"), "completion_tokens": usage.get("completion_tokens"),
@@ -177,6 +224,8 @@ if __name__ == "__main__":  # offline self-check: no network, no keys used
     assert b["text"]["format"]["type"] == "json_schema"
     assert r == {"content": "OK", "reasoning": "think", "status": "completed",
                  "usage": {"prompt_tokens": 12, "completion_tokens": 30, "reasoning_tokens": 28}}, r
+    _meta({"model": SAM, "prompt": "chip", "metadata": {"include_confidence": "true"}})
+    assert "reasoning" not in sent["body"] and sent["body"]["metadata"] == {"include_confidence": "true"}
 
     # Wonder failure -> one retry on Spark, through the real call() path (cache in a temp dir)
     import tempfile
@@ -202,4 +251,26 @@ if __name__ == "__main__":  # offline self-check: no network, no keys used
         raise AssertionError("a Spark error should propagate, not retry")
     except httpx.ConnectError:
         assert tried == [SPARK], tried
+
+    # sam(): synthetic SAM output (a 40x20 px rectangle drawn at half resolution) decodes back to pixels
+    import io
+    from meta_sam_parser._mask_codec import _encode_raster
+    from PIL import Image
+    buf = io.BytesIO()
+    Image.new("RGB", (100, 80)).save(buf, "JPEG")
+    raster = [1] * (20 * 10)  # box-local raster: 20 wide, 10 high, for a 40x20 box
+    PROVIDERS["meta"], CACHE = (lambda p: {"content": (
+        "<0f>0<|box;x1=10;y1=30;x2=49;y2=49;w=100;h=80;c=0.91|>"
+        f"<|mask;x=0;y=0;c=0.9;data=10,20,{_encode_raster(raster, 20, 10)}|>\n"), "usage": {}}), Path(tempfile.mkdtemp())
+    s = sam(buf.getvalue(), text="thing")
+    (o,) = s["objects"]
+    assert s["image_size"] == (100, 80) and o["box"] == [10, 30, 50, 50] and o["score"] == 0.9, o
+    assert o["mask"].sum() == 40 * 20 and o["mask"][30:50, 10:50].all()
+    xs, ys = zip(*o["contours"][0])
+    assert (min(xs), max(xs), min(ys), max(ys)) == (10, 50, 30, 50), (min(xs), max(xs), min(ys), max(ys))
+    try:
+        sam(buf.getvalue(), text="thing", points=[(1, 1, True)])
+        raise AssertionError("mixing text and points should be rejected")
+    except ValueError:
+        pass
     print("models self-check passed")
