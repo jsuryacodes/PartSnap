@@ -23,7 +23,7 @@ export async function checkPhoto(view: View, photo: Blob) {
 }
 
 type Pt = [number, number]
-export type Measurement = { key: string; letter?: string; label: string; hint: string; photo: View; line: [Pt, Pt]; example?: number }
+export type Measurement = { key: string; letter?: string; label: string; hint: string; photo: View; line: [Pt, Pt] }
 export type Diagnosis = {
   fix_type: string
   title: string

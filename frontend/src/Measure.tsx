@@ -182,7 +182,7 @@ export default function Measure({ photos, onDone }: { photos: Photos; onDone: (d
             <span className={`callout ${Number(values[m.key]) > 0 ? 'set' : ''}`}>{tag(m, i)}</span>
             <span className="spec-label">{m.label}<small>{m.hint}</small></span>
             <span className="spec-input">
-              <input type="number" inputMode="decimal" min="0" step="0.5" placeholder={m.example ? String(m.example) : '0'}
+              <input type="number" inputMode="decimal" min="0" step="0.5" placeholder="–"
                 value={values[m.key] ?? ''} onChange={(e) => set(m.key, e.target.value)} />
               <em>mm</em>
             </span>
