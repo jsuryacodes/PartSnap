@@ -9,11 +9,12 @@
   }
  },
  {
-  "content": "{\"code\": \"def far_chain(poly):\\n    \\\"\\\"\\\"The part of a closed outline between its two ends (min and max x) that lies farther from the edge.\\\"\\\"\\\"\\n    n = len(poly)\\n    a = min(range(n), key=lambda i: poly[i][0])\\n    b = max(range(n), key=lambda i: poly[i][0])\\n    one = [poly[(a + k) % n] for k in range((b - a) % n + 1)]\\n    two = [poly[(b + k) % n] for k in range((a - b) % n + 1)]\\n    return max(one, two, key=lambda chain: sum(p[1] for p in chain) / len(chain))\\n\\n\\n# Back boundary of the top outline, bottom boundary of the front outline.\\nmissing = loft_between(far_chain(TOP), far_chain(FRONT))\\npiece = offset_inward(missing, CLEARANCE)\\nresult, trimmed_mm = enforce_min_thickness(piece, MIN_THICKNESS)\\n\", \"rationale\": \"I lofted the back edge of the top outline to the bottom edge of the front outline, moved the break surface in by the clearance so it slides in, and trimmed ${trimmed_mm} mm of thin ends (${blunt_mm} at the blunt end, ${feather_mm} of feather) to keep it at least 1 mm thick.\", \"fix_type\": \"chip_fill\", \"trimmed_mm\": ${trimmed_mm}}",
+  "content": "{\"code\": \"def _break_chain(outline):\\n    n = len(outline)\\n    start = min(range(n), key=lambda i: (outline[i][0], i))\\n    x_max = max(p[0] for p in outline)\\n    chains = []\\n    for step in (-1, 1):\\n        chain = [outline[start]]\\n        i = start\\n        for _ in range(n):\\n            if chain[-1][0] >= x_max - 1e-9 and len(chain) > 1:\\n                break\\n            i = (i + step) % n\\n            chain.append(outline[i])\\n        chains.append(chain)\\n    # The break chain is farther from the edge (larger y/z) than the edge-hugging chain.\\n    return max(chains, key=lambda c: sum(p[1] for p in c) / len(c))\\n\\ntop_back = _break_chain(TOP)\\nfront_bottom = _break_chain(FRONT)\\n# Both chains are already ordered along increasing x from the blunt end to the feather end.\\nsolid = loft_between(top_back, front_bottom)\\nsolid = offset_inward(solid, CLEARANCE)\\nsolid, trimmed_mm = enforce_min_thickness(solid, MIN_THICKNESS)\\nresult = solid\\n\", \"rationale\": \"Built the chip fill by lofting between the deep break boundaries of the top and front outlines, offsetting it by the clearance while keeping the tabletop and front faces flush, then trimming its thin ends to the minimum printable thickness.\", \"fix_type\": \"chip_fill\", \"trimmed_mm\": ${trimmed_mm}}",
   "usage": {
-   "prompt_tokens": 2350,
-   "completion_tokens": 820,
-   "reasoning_tokens": 540
-  }
+   "prompt_tokens": 1300,
+   "completion_tokens": 3427,
+   "reasoning_tokens": 2955
+  },
+  "source": "live Muse Wonder answer, samples/hero/out/wonder_run.json (trimmed_mm templated to the user's dims)"
  }
 ]

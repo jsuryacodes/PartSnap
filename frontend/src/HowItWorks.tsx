@@ -14,7 +14,13 @@ type Geos = Record<(typeof PARTS)[number], THREE.BufferGeometry>
 // The app's default missing piece: the mock diagnosis's SAM outlines and example measurements, plus the default
 // clearance. backend/export_how_it_works.py builds it through verify.py and writes public/hiw/*.stl and hiw.json.
 const { t: T, d: D, c: C } = HIW
-const VERIFY: VerifyResult = HIW.verify
+const VERIFY = HIW.verify // static: verify.py's report on the old corner-chip piece
+const ROWS: VerifyResult = { ok: true, error: null, clearance: C, checks: [ // shown as the inspector shows them in the app
+  { name: 'Watertight, single body', ok: true, value: `${VERIFY.bodies} body`, expected: null },
+  { name: 'Overall size', ok: true, value: VERIFY.bbox.map((x) => x.toFixed(1)).join(' × ') + ' mm', expected: VERIFY.expected_bbox.map((x) => x.toFixed(1)).join(' × ') + ' ± 0.3' },
+  { name: 'Overlap with the table', ok: true, value: `${VERIFY.interference_volume.toFixed(3)} mm³`, expected: '0' },
+  { name: 'Gap to the break', ok: true, value: `${VERIFY.gap.typical.toFixed(2)} mm typical`, expected: `${C.toFixed(2)} on ${VERIFY.gaps.length} faces` },
+] }
 const CODE = HIW.code // the passing Muse Spark Open answer at these values, wrapped to fit a phone
 const LIFT = 28 // the piece is built this far above the chip, then slides down into it
 
@@ -270,8 +276,8 @@ function overlay(s: number, proj: (p: V3) => Pt, w: number, h: number) {
     const q: Pt = [p[0] + (dx / len) * 54, Math.max(p[1] + (dy / len) * 54, 106)] // below the stack of checks, top left
     out += g(op, line('ld', p, q) + dot(p) + tag(q[0], q[1], `GAP ${gap.toFixed(2)} mm`, '✓', dx < 0 ? 'right' : 'left'))
   })
-  out += g(ramp(5.56, 5.64, s) * fit, tag(14, 22, `FILL ${(VERIFY.fill_ratio! * 100).toFixed(1)}%`, '✓', 'left')
-    + tag(14, 48, `OVERLAP ${VERIFY.interference_volume!.toFixed(3)} mm³`, '✓', 'left')
+  out += g(ramp(5.56, 5.64, s) * fit, tag(14, 22, `FILL ${(VERIFY.fill_ratio * 100).toFixed(1)}%`, '✓', 'left')
+    + tag(14, 48, `OVERLAP ${VERIFY.interference_volume.toFixed(3)} mm³`, '✓', 'left')
     + tag(14, 74, `WATERTIGHT · ${VERIFY.bodies} BODY`, '✓', 'left'))
   const st = ramp(5.62, 5.72, s) * fit
   out += g(st, `<g transform="translate(${f(w - 54)},34) rotate(-4) scale(${(1 + 0.7 * (1 - st)).toFixed(2)})">`
@@ -290,7 +296,7 @@ function Card({ k, onStart, codeRef, still }: { k: number; onStart: () => void; 
       <Title>{title}</Title>
       <p className="body">{body}</p>
       {k === 4 && <pre className="hiw-code"><code ref={codeRef} className={still ? 'still' : undefined}>{still ? CODE : ''}</code></pre>}
-      {k === 5 && <Checks v={VERIFY} clearance={C} />}
+      {k === 5 && <Checks v={ROWS} />}
       {tags && <div className="byline">{tags.map((t) => <ModelTag key={t}>{t}</ModelTag>)}</div>}
       {k === 6 && <button className="btn btn-primary" onClick={onStart}>Fix something <span className="arrow">→</span></button>}
     </div>

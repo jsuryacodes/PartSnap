@@ -5,7 +5,7 @@ import { ArrowDefs, ModelTag } from './ui'
 export type Params = Record<string, number>
 type Pt = [number, number]
 
-const VIEW_NAME: Record<View, string> = { top: 'Top view', side: 'Side view', closeup: 'Close-up' }
+const VIEW_NAME: Record<View, string> = { top: 'Top view', side: 'Front view', closeup: 'Close-up' }
 const VIEWS = Object.keys(VIEW_NAME) as View[]
 
 function useSize<T extends HTMLElement>() {
@@ -121,6 +121,7 @@ export default function Measure({ photos, onDone }: { photos: Photos; onDone: (d
       <p className="eyebrow">Diagnosis · <span className="accent">{d.fix_type.replace('_', ' ')}</span></p>
       <h2 className="title">{d.title}</h2>
       <p className="lede">{d.explanation}</p>
+      {d.rationale && <p className="reasoning" style={{ marginTop: 6 }}>Why this fix: {d.rationale}</p>}
       <div className="byline">
         Diagnosed by <ModelTag>{d.by.diagnosis}</ModelTag> damage outlined by <ModelTag>{d.by.segmentation}</ModelTag>
       </div>
@@ -151,7 +152,9 @@ export default function Measure({ photos, onDone }: { photos: Photos; onDone: (d
             <span className="callout plain">{k[0].toUpperCase()}</span>
             <span className="spec-label">{k[0].toUpperCase() + k.slice(1)}<small>{d.param_help[k]}</small></span>
             <span className="spec-input">
-              <input type="number" inputMode="decimal" min="0" step="0.1" value={values[k] ?? ''} onChange={(e) => set(k, e.target.value)} />
+              {k === 'clearance'
+                ? <select value={values[k] ?? '0.2'} onChange={(e) => set(k, e.target.value)}><option value="0.2">0.2</option><option value="0.4">0.4</option></select>
+                : <input type="number" inputMode="decimal" min="0" step="0.1" value={values[k] ?? ''} onChange={(e) => set(k, e.target.value)} />}
               <em>mm</em>
             </span>
           </label>

@@ -85,7 +85,7 @@ export default function Landing({ onStart }: { onStart: () => void }) {
             <button className="btn btn-primary" onClick={onStart}>Fix something <span className="arrow">→</span></button>
             <div className="byline" style={{ marginTop: 0 }}>
               Powered by Meta models
-              <ModelTag>Muse Spark</ModelTag><ModelTag>SAM 3.1</ModelTag><ModelTag>Muse Spark Open</ModelTag>
+              <ModelTag>Muse Spark</ModelTag><ModelTag>SAM 3.1</ModelTag><ModelTag>Muse Wonder</ModelTag><ModelTag>Muse Spark Open</ModelTag>
             </div>
           </div>
         </div>

@@ -118,7 +118,7 @@ export default function Capture({ onDone }: { onDone: (p: Photos) => void }) {
     setRetake(null)
     try {
       const r = await checkPhoto(shot.view, blob)
-      if (!r.ok) return setRetake(r.retake_instruction ?? 'Please retake this photo.')
+      if (!r.ok) return setRetake([r.retake_instruction ?? 'Please retake this photo.', r.rationale].filter(Boolean).join(' '))
       const next = { ...photos, [shot.view]: blob }
       setPhotos(next)
       setThumbs((t) => ({ ...t, [shot.view]: URL.createObjectURL(blob) }))

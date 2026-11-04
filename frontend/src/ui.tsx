@@ -8,7 +8,7 @@ export function Footer() {
   return (
     <footer className="footer">
       <span>Built for the Meta AI Developer Hackathon</span>
-      <span className="tags"><ModelTag>Muse Spark</ModelTag><ModelTag>SAM 3.1</ModelTag><ModelTag>Muse Spark Open</ModelTag></span>
+      <span className="tags"><ModelTag>Muse Spark</ModelTag><ModelTag>SAM 3.1</ModelTag><ModelTag>Muse Wonder</ModelTag><ModelTag>Muse Spark Open</ModelTag></span>
       <a href="https://github.com/jsuryacodes/PartSnap" target="_blank" rel="noreferrer">GitHub ↗</a>
     </footer>
   )

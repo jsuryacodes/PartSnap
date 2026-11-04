@@ -9,8 +9,9 @@ import { ModelTag } from './ui'
 
 const INK = 0x191917, ACCENT = 0xff5b14, PAPER = 0xfbf9f3, WOOD = 0xdcc8a6, GRAIN = 0x9a7b55
 
-/** The part in place: seated in the damaged table from the backend (chip fill), or over a translucent table corner (corner cap). */
-function Preview({ url, mateUrl, params }: { url: string; mateUrl?: string; params: Params }) {
+/** The part seated in the damaged table, both from the backend. The chip_fill frame is z-down (tabletop at z = 0, the
+ * table below it), so it turns the other way from CadQuery's usual z-up to sit tabletop-up in three.js. */
+function Preview({ url, mateUrl }: { url: string; mateUrl?: string }) {
   const el = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -25,28 +26,17 @@ function Preview({ url, mateUrl, params }: { url: string; mateUrl?: string; para
     scene.background = new THREE.Color(PAPER)
     scene.add(new THREE.HemisphereLight(0xffffff, 0xb9b09c, 2.2))
     const sun = new THREE.DirectionalLight(0xffffff, 1.6)
-    sun.position.set(-80, 160, 120)
+    sun.position.set(80, 160, -120)
     scene.add(sun)
-    const camera = new THREE.PerspectiveCamera(35, w / h, 1, 5000)
+    const camera = new THREE.PerspectiveCamera(35, w / h, 0.1, 5000)
     const controls = new OrbitControls(camera, renderer.domElement)
     controls.enableDamping = true
 
-    // CadQuery is Z-up; three.js is Y-up.
     const part = new THREE.Group()
-    part.rotation.x = -Math.PI / 2
+    part.rotation.x = Math.PI / 2 // z-down -> y-up; the front face (y = 0) then faces the camera at -z
     scene.add(part)
-    const edges = (g: THREE.BufferGeometry, color: number, opacity = 1) =>
-      new THREE.LineSegments(new THREE.EdgesGeometry(g, 30), new THREE.LineBasicMaterial({ color, transparent: opacity < 1, opacity }))
-
-    if (!mateUrl) {
-      // Table corner as a translucent block, extending past the cap so the fit reads clearly.
-      const { edge_thickness: t, reach_x: rx, reach_y: ry } = params
-      const tableGeo = new THREE.BoxGeometry(rx * 1.8, ry * 1.8, t)
-      const table = new THREE.Mesh(tableGeo, new THREE.MeshStandardMaterial({ color: 0xc8a272, transparent: true, opacity: 0.28, depthWrite: false }))
-      table.position.set(rx * 0.9, ry * 0.9, t / 2)
-      table.add(edges(tableGeo, GRAIN, 0.7))
-      part.add(table)
-    }
+    const edges = (g: THREE.BufferGeometry, color: number) =>
+      new THREE.LineSegments(new THREE.EdgesGeometry(g, 30), new THREE.LineBasicMaterial({ color }))
 
     let alive = true
     const loader = new STLLoader()
@@ -76,7 +66,7 @@ function Preview({ url, mateUrl, params }: { url: string; mateUrl?: string; para
       controls.minDistance = size * 0.5 // keep wheel/pinch zoom from diving inside the part
       controls.maxDistance = size * 4
       controls.target.copy(c)
-      camera.position.copy(c).add(new THREE.Vector3(-0.7, 0.6, 0.9).multiplyScalar(size * 1.15))
+      camera.position.copy(c).add(new THREE.Vector3(0.45, 0.75, -0.9).multiplyScalar(size * 1.15))
       controls.update()
     })
 
@@ -107,63 +97,51 @@ function GlueSteps({ clearance }: { clearance: number }) {
   )
 }
 
-const FACE: Record<string, string> = { '-x': 'End face A', '-y': 'End face B', '-z': 'Underside', '+z': 'Top surface' }
-
-export default function Result({ fix, done, params, onRestart }: { fix: string; done: Done; params: Params; onRestart: () => void }) {
-  const url = API + done.stl_url
-  const fill = fix === 'chip_fill'
+export default function Result({ done, params, onRestart }: { done: Done; params: Params; onRestart: () => void }) {
   const v = done.verify
-  const gaps = v.gaps ?? []
-  const partNo = (done.stl_url.match(/-([0-9a-f]{6})/)?.[1] ?? '000000').toUpperCase()
+  const design = done.stls.find((s) => s.clearance === params.clearance) ?? done.stls[0]
+  const partNo = (design.url.match(/-([0-9a-f]{6})/)?.[1] ?? '000000').toUpperCase()
   const mm = (x: number, d = 1) => `${x.toFixed(d)} mm`
   const size = v.bbox!.map((x) => x.toFixed(1)).join(' × ')
 
   return (
     <div className="screen wide">
       <p className="eyebrow">Result · <span className="accent">verified</span></p>
-      <h2 className="title">{fill ? 'Your missing piece is ready to print' : 'Your corner cap is ready to print'}</h2>
+      <h2 className="title">Your missing piece is ready to print</h2>
       <div className="result-grid">
         <div>
-          <Preview url={url} mateUrl={fill && done.mate_url ? API + done.mate_url : undefined} params={params} />
+          <Preview url={API + design.url} mateUrl={done.mate_url ? API + done.mate_url : undefined} />
           <div className="download">
-            <a className="btn btn-primary btn-block" href={url} download={`partsnap-${fix.replace('_', '-')}.stl`}>Download STL <span className="arrow">↓</span></a>
-            <p className="sub">STL · millimetres · {size}</p>
+            {done.stls.map((s) => (
+              <a key={s.clearance} className={`btn btn-block ${s.clearance === params.clearance ? 'btn-primary' : 'btn-ghost'}`}
+                style={{ marginBottom: 8 }} href={API + s.url} download={`partsnap-chip-fill-${s.clearance.toFixed(1)}mm.stl`}>
+                Download STL · {s.clearance.toFixed(1)} mm clearance{s.clearance > params.clearance ? ' (looser)' : s.clearance < params.clearance ? ' (snugger)' : ''} <span className="arrow">↓</span>
+              </a>
+            ))}
+            <p className="sub">STL · millimetres · {size} · lies tabletop face down, no supports</p>
           </div>
-          {fill && <GlueSteps clearance={params.clearance} />}
+          <GlueSteps clearance={params.clearance} />
         </div>
         <div>
           <section className="sheet" aria-label="Spec sheet">
-            <div className="sheet-head"><b>SPEC SHEET</b><span className="eyebrow">PS-{fill ? 'CF' : 'CC'}-{partNo}</span></div>
-            {fill ? (
-              <dl>
-                <div className="group">Envelope</div>
-                <dt>Overall size</dt><dd>{size}</dd>
-                <dt>Fits edge thickness</dt><dd>{mm(params.edge_thickness)}</dd>
-                <dt>Chip depth</dt><dd>{mm(params.chip_depth)}</dd>
-                <dt>Clearance (nominal)</dt><dd>{mm(params.clearance, 2)}</dd>
-                <div className="group">Measured fit · {gaps.length} break faces</div>
-                <dt>Gap to the break, typical</dt><dd className="ok">{mm(v.gap!.typical, 2)}</dd>
-                <dt>Gap, tightest / loosest</dt><dd>{v.gap!.min.toFixed(2)} / {mm(v.gap!.max, 2)}</dd>
-                <dt>Overlap with the wood</dt><dd className="ok">{v.interference_volume!.toFixed(3)} mm³</dd>
-                <dt>Fill ratio <span className="mono" style={{ color: 'var(--muted)', fontSize: 11 }}>of the missing volume</span></dt>
-                <dd className="ok">{(v.fill_ratio! * 100).toFixed(1)}%</dd>
-                <dt>Mesh</dt><dd className="ok">watertight · {v.bodies} body</dd>
-              </dl>
-            ) : (
-              <dl>
-                <div className="group">Envelope</div>
-                <dt>Overall size</dt><dd>{size}</dd>
-                <dt>Fits edge thickness</dt><dd>{mm(params.edge_thickness)}</dd>
-                <dt>Reach, edge A / B</dt><dd>{params.reach_x.toFixed(1)} / {params.reach_y.toFixed(1)}</dd>
-                <dt>Wall</dt><dd>{mm(params.wall)}</dd>
-                <dt>Clearance (nominal)</dt><dd>{mm(params.clearance, 2)}</dd>
-                <div className="group">Measured fit · {gaps.length} mating faces</div>
-                {gaps.map((g) => [<dt key={g.face + 't'}>{FACE[g.face] ?? g.face} <span className="mono" style={{ color: 'var(--muted)', fontSize: 11 }}>{g.face}</span></dt>, <dd key={g.face} className="ok">{mm(g.gap, 2)}</dd>])}
-                <dt>Overlap with table</dt><dd className="ok">{v.interference_volume!.toFixed(3)} mm³</dd>
-                <dt>Mesh</dt><dd className="ok">watertight · {v.bodies} body</dd>
-              </dl>
-            )}
-            <div className="foot byline">CAD by <ModelTag>Muse Spark Open</ModelTag><span className="mono">{done.attempts} attempt{done.attempts > 1 ? 's' : ''}</span></div>
+            <div className="sheet-head"><b>SPEC SHEET</b><span className="eyebrow">PS-CF-{partNo}</span></div>
+            <dl>
+              <div className="group">Measured</div>
+              <dt>Chip length</dt><dd>{mm(params.edge_length_mm)}</dd>
+              <dt>Depth on top / front</dt><dd>{params.top_depth_mm.toFixed(1)} / {mm(params.front_depth_mm)}</dd>
+              <div className="group">Piece · {params.clearance.toFixed(1)} mm clearance</div>
+              <dt>Overall size</dt><dd>{size} mm</dd>
+              {done.trimmed_mm !== undefined && <><dt>Thin ends trimmed</dt><dd>{mm(done.trimmed_mm, 2)}</dd></>}
+              {v.min_thickness !== undefined && <><dt>Thinnest section</dt><dd className="ok">{mm(v.min_thickness, 2)}</dd></>}
+              {v.gap && <>
+                <dt>Gap to the break, typical</dt><dd className="ok">{mm(v.gap.typical, 3)}</dd>
+                <dt>Gap, tightest / loosest</dt><dd>{v.gap.min.toFixed(3)} / {mm(v.gap.max, 3)}</dd>
+              </>}
+              <dt>Overlap with the table</dt><dd className="ok">{v.interference_volume!.toFixed(3)} mm³</dd>
+              <dt>Checks</dt><dd className="ok">{v.checks.filter((c) => c.ok).length}/{v.checks.length} passed</dd>
+            </dl>
+            {done.rationale && <p className="reasoning" style={{ padding: '8px 12px', fontSize: 14 }}>“{done.rationale}”</p>}
+            <div className="foot byline">CAD by <ModelTag>{done.by}</ModelTag><span className="mono">{done.attempts} attempt{done.attempts > 1 ? 's' : ''}</span></div>
           </section>
           <button className="btn btn-ghost btn-block" style={{ marginTop: 16 }} onClick={onRestart}>Fix something else</button>
         </div>

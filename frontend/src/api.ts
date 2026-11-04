@@ -19,7 +19,7 @@ export async function checkPhoto(view: View, photo: Blob) {
   const f = new FormData()
   f.append('view', view)
   f.append('photo', photo, `${view}.jpg`)
-  return postForm<{ ok: boolean; retake_instruction: string | null; by: string }>('/check-photo', f)
+  return postForm<{ ok: boolean; retake_instruction: string | null; rationale?: string | null; by: string }>('/check-photo', f)
 }
 
 type Pt = [number, number]
@@ -28,7 +28,8 @@ export type Diagnosis = {
   fix_type: string
   title: string
   explanation: string
-  outlines: Partial<Record<View, Pt[]>> // SAM 3.1, 0–1 image coordinates
+  rationale?: string
+  outlines: Partial<Record<View, Pt[]>> // SAM 3.1, 0–1 image coordinates (side = the front face)
   measurements: Measurement[]
   settings: Record<string, number>
   param_help: Record<string, string>
@@ -42,23 +43,28 @@ export async function diagnose(photos: Photos) {
   return postForm<Diagnosis>('/diagnose', f)
 }
 
+export type Check = { name: string; ok: boolean; value: string; expected: string | null }
 export type VerifyResult = {
   ok: boolean
   error: string | null
-  watertight?: boolean
-  bodies?: number
+  clearance: number
+  checks: Check[] // the inspector's rows, exactly as backend/verify.py judged them
   bbox?: number[]
-  expected_bbox?: number[]
+  gap?: { min: number; typical: number; max: number } | null
+  gaps?: { gap: number; x: number }[]
   interference_volume?: number
-  gaps?: { face: string; gap: number; area: number }[] // one per mating face the piece faces
-  gap?: { min: number; typical: number; max: number } | null // typical: area-weighted median
-  fill_ratio?: number // piece volume / missing volume, for fixes that replace what broke off
+  min_thickness?: number
+  trimmed_mm?: number
 }
+export type Usage = { prompt_tokens?: number | null; completion_tokens?: number | null; reasoning_tokens?: number | null }
+export type Stl = { clearance: number; url: string }
 export type GenEvent =
   | { type: 'attempt'; n: number; by: string }
-  | { type: 'code'; n: number; reasoning: string | null; code: string }
+  | { type: 'design'; n: number; model: string; by: string; rationale?: string; code?: string; code_hash?: string
+      trimmed_mm?: number; usage: Usage; error?: string }
   | ({ type: 'verify'; n: number } & VerifyResult)
-  | { type: 'done'; ok: boolean; attempts: number; stl_url?: string; mate_url?: string }
+  | { type: 'done'; ok: boolean; attempts: number; model?: string; rationale?: string; trimmed_mm?: number
+      stls?: Stl[]; mate_url?: string }
   | { type: 'error'; message: string }
 
 /** POST + read the server-sent event stream (EventSource can't POST). */

@@ -56,7 +56,7 @@ export default function App() {
           {started && !photos && <Capture onDone={(p) => { setPhotos(p); top() }} />}
           {photos && !job && <Measure photos={photos} onDone={(d, params) => { setJob({ d, params }); top() }} />}
           {job && !done && <Generate fix={job.d.fix_type} params={job.params} shape={job.d.shape} onDone={(d) => { setDone(d); top() }} />}
-          {job && done && <Result fix={job.d.fix_type} done={done} params={job.params} onRestart={restart} />}
+          {job && done && <Result done={done} params={job.params} onRestart={restart} />}
         </>}
       </main>
       {phase < 0 && <Footer />}
