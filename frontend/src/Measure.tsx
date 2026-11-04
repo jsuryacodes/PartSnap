@@ -21,7 +21,7 @@ function useSize<T extends HTMLElement>() {
 }
 
 /** A drawing-style dimension: extension lines, arrowed dimension line offset outward, mono label. */
-function Dim({ a, b, n, value, w, h }: { a: Pt; b: Pt; n: number; value: string; w: number; h: number }) {
+function Dim({ a, b, n, value, w, h }: { a: Pt; b: Pt; n: string; value: string; w: number; h: number }) {
   const dx = b[0] - a[0], dy = b[1] - a[1], len = Math.hypot(dx, dy) || 1
   let nx = dy / len, ny = -dx / len
   const mid: Pt = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]
@@ -50,7 +50,7 @@ function Dim({ a, b, n, value, w, h }: { a: Pt; b: Pt; n: number; value: string;
 function DimPhoto({ view, src, d, values }: { view: View; src?: string; d: Diagnosis; values: Record<string, string> }) {
   const [ref, { w, h }] = useSize<HTMLDivElement>()
   const px = (p: Pt): Pt => [p[0] * w, p[1] * h]
-  const dims = d.measurements.map((m, i) => [m, i + 1] as [Measurement, number]).filter(([m]) => m.photo === view)
+  const dims = d.measurements.map((m, i) => [m, tag(m, i)] as [Measurement, string]).filter(([m]) => m.photo === view)
   return (
     <div className="photo" ref={ref}>
       {src && <img src={src} alt={VIEW_NAME[view]} />}
@@ -72,6 +72,23 @@ function DimPhoto({ view, src, d, values }: { view: View; src?: string; d: Diagn
       <span className="caption">{VIEW_NAME[view]}</span>
     </div>
   )
+}
+
+const tag = (m: Measurement, i: number) => m.letter ?? String(i + 1)
+const MISMATCH = 1.4 // hero photos: 0.97 (top), 1.16 (front)
+
+/** Straight-on photos have the same mm per px along and across the edge; a big mismatch means a typo or an angled
+ * photo. A sets "along" in both photos; B sets "across" in the top photo, C in the front photo. */
+function scaleWarning(d: Diagnosis, values: Record<string, string>) {
+  const [a, b, c] = ['edge_length_mm', 'top_depth_mm', 'front_depth_mm'].map((k) => Number(values[k]))
+  if (!d.extent_px || !(a > 0)) return null
+  const off = ([along, across]: [number, number], depth: number) => {
+    if (!(depth > 0) || !(along > 0) || !(across > 0)) return false
+    const r = (a / along) / (depth / across)
+    return r > MISMATCH || r < 1 / MISMATCH
+  }
+  const bad = [off(d.extent_px.top, b) && 'A and B', off(d.extent_px.front, c) && 'A and C'].filter(Boolean)
+  return bad.length ? `${bad.join(', and ')} don't match the photos' proportions. Check for a typo, or that the photo was taken straight on.` : null
 }
 
 export default function Measure({ photos, onDone }: { photos: Photos; onDone: (d: Diagnosis, p: Params) => void }) {
@@ -134,7 +151,7 @@ export default function Measure({ photos, onDone }: { photos: Photos; onDone: (d
       <div className="spec" style={{ borderTop: 0 }}>
         {d.measurements.map((m, i) => (
           <label className="spec-row" key={m.key}>
-            <span className={`callout ${Number(values[m.key]) > 0 ? 'set' : ''}`}>{i + 1}</span>
+            <span className={`callout ${Number(values[m.key]) > 0 ? 'set' : ''}`}>{tag(m, i)}</span>
             <span className="spec-label">{m.label}<small>{m.hint}</small></span>
             <span className="spec-input">
               <input type="number" inputMode="decimal" min="0" step="0.5" placeholder={m.example ? String(m.example) : '0'}
@@ -145,11 +162,13 @@ export default function Measure({ photos, onDone }: { photos: Photos; onDone: (d
         ))}
       </div>
 
+      {scaleWarning(d, values) && <p className="notice">{scaleWarning(d, values)}</p>}
+
       <div className="section-head"><h3>Print settings</h3><span>editable defaults</span></div>
       <div className="spec" style={{ borderTop: 0 }}>
         {Object.keys(d.settings).map((k) => (
           <label className="spec-row" key={k}>
-            <span className="callout plain">{k[0].toUpperCase()}</span>
+            <span className="callout plain">{k === 'clearance' ? '±' : k[0].toUpperCase()}</span>
             <span className="spec-label">{k[0].toUpperCase() + k.slice(1)}<small>{d.param_help[k]}</small></span>
             <span className="spec-input">
               {k === 'clearance'

@@ -1,9 +1,9 @@
 [
-  {
-    "content": "{\"fix_type\": \"chip_fill\", \"title\": \"Chipped table edge\", \"explanation\": \"A sliver about 2 cm long has broken off the front edge: deepest at the right end, thinning to a feather edge on the left. PartSnap rebuilds the missing piece from its outline in the top and front photos, sized by your ruler, so you can glue it back in.\", \"rationale\": \"The chip is a clean break with sound wood all around it, so a printed piece that fills it exactly is the strongest fix.\", \"measurements\": [{\"key\": \"edge_length_mm\", \"label\": \"Chip length\", \"hint\": \"Along the edge, from the blunt right end to the tip of the feather.\", \"photo\": \"top\", \"line\": [[0.353, 0.846], [0.647, 0.846]], \"example\": 18}, {\"key\": \"top_depth_mm\", \"label\": \"Depth on top\", \"hint\": \"On the tabletop: from the edge straight back to the deepest point of the break.\", \"photo\": \"top\", \"line\": [[0.614, 0.847], [0.614, 0.775]], \"example\": 5}, {\"key\": \"front_depth_mm\", \"label\": \"Depth on the front\", \"hint\": \"On the front face: from the top edge straight down to the deepest point of the break.\", \"photo\": \"side\", \"line\": [[0.619, 0.316], [0.619, 0.38]], \"example\": 3.5}]}",
-    "usage": {
-      "prompt_tokens": 4410,
-      "completion_tokens": 420
-    }
+ {
+  "content": "{\"fix_type\": \"chip_fill\", \"title\": \"Chipped table edge\", \"explanation\": \"A sliver about 2 cm long has broken off the front edge: deepest at the right end, thinning to a feather edge on the left. PartSnap rebuilds the missing piece from its outline in the top and front photos, sized by your ruler, so you can glue it back in.\", \"rationale\": \"The chip is a clean break with sound wood all around it, so a printed piece that fills it exactly is the strongest fix.\", \"measurements\": [{\"key\": \"edge_length_mm\", \"label\": \"Chip length\", \"hint\": \"Sets how long the piece is, so it spans the whole break.\", \"example\": 36}, {\"key\": \"top_depth_mm\", \"label\": \"Depth on top\", \"hint\": \"Scales the top outline, so the piece reaches the back of the break.\", \"example\": 12}, {\"key\": \"front_depth_mm\", \"label\": \"Depth on the front\", \"hint\": \"Scales the front outline, so the piece fills the break down the edge.\", \"example\": 7}]}",
+  "usage": {
+   "prompt_tokens": 4410,
+   "completion_tokens": 420
   }
+ }
 ]

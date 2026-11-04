@@ -69,7 +69,7 @@ function HeroDrawing() {
 
 const STEPS = [
   ['01', 'Snap', 'Three guided photos. SAM 3.1 outlines what’s missing, from the top and from the side.'],
-  ['02', 'Measure', 'Two ruler readings: the tabletop thickness, which scales the outlines to millimetres, and the chip depth.'],
+  ['02', 'Measure', 'Three ruler readings, drawn on your own photos: the chip\'s length (A), how far back it goes (B) and how far down (C). They scale the outlines to millimetres.'],
   ['03', 'Print', 'The CAD is written, then checked against the break before you download: no overlap, a 0.2\u00a0mm gap, 90%+ filled. Glue it in.'],
 ]
 

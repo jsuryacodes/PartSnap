@@ -23,14 +23,15 @@ export async function checkPhoto(view: View, photo: Blob) {
 }
 
 type Pt = [number, number]
-export type Measurement = { key: string; label: string; hint: string; photo: View; line: [Pt, Pt]; example?: number }
+export type Measurement = { key: string; letter?: string; label: string; hint: string; photo: View; line: [Pt, Pt]; example?: number }
 export type Diagnosis = {
   fix_type: string
   title: string
   explanation: string
   rationale?: string
   outlines: Partial<Record<View, Pt[]>> // SAM 3.1, 0–1 image coordinates (side = the front face)
-  measurements: Measurement[]
+  measurements: Measurement[] // where to measure: lines computed from SAM's outlines, not by the LLM
+  extent_px?: { top: [number, number]; front: [number, number] } // chip's [along, across] edge extent, photo px
   settings: Record<string, number>
   param_help: Record<string, string>
   shape: unknown // passed back to /generate untouched; the backend turns the outlines into mm

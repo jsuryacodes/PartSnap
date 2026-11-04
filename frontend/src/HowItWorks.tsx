@@ -32,7 +32,7 @@ const STEPS: { title: string; sheet: string; body: string; tags?: string[] }[] =
   { title: 'SAM 3.1 outlines what’s missing.', sheet: 'Segmentation', tags: ['SAM 3.1', 'Muse Spark'],
     body: 'SAM 3.1 outlines the missing area in the top view and in the side view. Muse Spark reads all three shots, picks the fix (here, the missing piece itself) and works out what to measure.' },
   { title: 'Measure two things.', sheet: 'Measurements',
-    body: 'The app marks exactly where to put the ruler. The tabletop thickness is the one reference that scales both outlines to millimetres, and the chip depth sets how deep the piece goes. Clearance comes pre-filled.' },
+    body: 'The app draws exactly where to put the ruler on your own photos: A along the chip, B straight back, C straight down. They scale both outlines to millimetres, and a mismatch with the photos flags a typo. Clearance comes pre-filled.' },
   { title: 'Muse Spark Open builds the missing piece.', sheet: 'CAD generation', tags: ['Muse Spark Open'],
     body: 'The outlines go to Muse Spark Open, which writes CadQuery like this: extrude the top outline down and the side outline across, keep where they overlap, then shrink it 0.2 mm so it slides in, flattening break features under 1 mm.' },
   { title: 'Checked against the break.', sheet: 'Inspection',

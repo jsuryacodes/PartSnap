@@ -64,6 +64,32 @@ def outlines_mm(shape, edge_length_mm, top_depth_mm, front_depth_mm, **_):
     return {"top": top, "front": front, "scale": {"top": st, "front": sf}}
 
 
+MEASURE = {  # what the user measures with a ruler, and on which photo the app draws it
+    "edge_length_mm": ("A", "front"),  # feather tip -> blunt end, along the edge
+    "top_depth_mm": ("B", "top"),  # edge -> deepest point, straight back
+    "front_depth_mm": ("C", "front"),  # edge -> deepest point, straight down
+}
+
+
+def dimension_lines(shape):
+    """SAM outlines (photo px, the frames above) -> {key: {"letter", "photo", "line": [[x, y], [x, y]] (0-1)}} plus
+    "extent_px": {view: [along, across]} for the scale cross-check. Computed from the outlines, never by an LLM."""
+    t, f = (np.asarray(shape[v]["polygon"], float) for v in ("top", "front"))
+    (tw, th), (fw, fh) = shape["top"]["image_size"], shape["front"]["image_size"]
+    edge_t, edge_f = t[:, 1].max(), f[:, 1].min()  # top photo: edge along the bottom; front photo: along the top
+    deep_t, deep_f = t[t[:, 1].argmin()], f[f[:, 1].argmax()]
+    lines = {"edge_length_mm": [[f[:, 0].min(), edge_f], [f[:, 0].max(), edge_f]],
+             "top_depth_mm": [[deep_t[0], edge_t], deep_t.tolist()],
+             "front_depth_mm": [[deep_f[0], edge_f], deep_f.tolist()]}
+    norm = {"top": (tw, th), "front": (fw, fh)}
+    out = {k: {"letter": MEASURE[k][0], "photo": MEASURE[k][1],
+               "line": [[round(x / norm[MEASURE[k][1]][0], 4), round(y / norm[MEASURE[k][1]][1], 4)] for x, y in ln]}
+           for k, ln in lines.items()}
+    out["extent_px"] = {"top": [float(np.ptp(t[:, 0])), float(edge_t - t[:, 1].min())],
+                        "front": [float(np.ptp(f[:, 0])), float(f[:, 1].max() - edge_f)]}
+    return out
+
+
 def _envelope(pts, xs, closed):
     """Deepest point of a polyline (or closed outline) at each x: the boundary farthest from the edge."""
     p = np.asarray(pts, float)
@@ -258,6 +284,22 @@ def example(edge_length_mm=18.0, top_depth_mm=5.0, front_depth_mm=3.5, clearance
 
 if __name__ == "__main__":  # offline self-check on the hero outlines: no model calls
     import time
+
+    import outline
+    hero = Path(__file__).resolve().parents[2] / "samples" / "hero"
+    shape = {v: outline.find_chip((hero / f"{v}.jpeg").read_bytes(), use_point=False, mock=f"sam_{v}")["outline"]
+             for v in ("top", "front")}
+    dl = dimension_lines(shape)
+    for k, (letter, view) in MEASURE.items():
+        (x0, y0), (x1, y1) = dl[k]["line"]
+        assert dl[k]["letter"] == letter and all(0 <= v <= 1 for v in (x0, y0, x1, y1)), dl[k]
+        assert (y0 == y1 and x1 > x0) if letter == "A" else (x0 == x1 and y0 != y1), dl[k]  # along / square to edge
+    hm = json.loads((hero / "measurements.json").read_text())
+    s = outlines_mm(shape, **hm)["scale"]  # dimension lines and outlines_mm must agree on the px extents
+    assert abs(hm["edge_length_mm"] / dl["extent_px"]["front"][0] - s["front"][0]) < 1e-4, (dl["extent_px"], s)
+    assert abs(hm["top_depth_mm"] / dl["extent_px"]["top"][1] - s["top"][1]) < 1e-4, (dl["extent_px"], s)
+    ratios = {v: s[v][0] / s[v][1] for v in s}
+    print(f"dimension lines ok; hero along/across mm-per-px ratio {ratios} (UI warns beyond 1.4x)")
 
     for c in (0.2, 0.4):
         t0 = time.time()

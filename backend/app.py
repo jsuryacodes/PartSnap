@@ -87,12 +87,12 @@ close-up of the damage.
 Available fix types (for a chipped edge, pick chip_fill unless the chip can't be filled):
 {fixes}
 Pick the fix type and explain the damage and the fix in 1–2 sentences. Choose which of that fix's parameters the user
-must measure with a ruler (from its list; clearance is a print setting, not a measurement). For each, give a line on
-the photo where to measure, in 0–1 image coordinates ("side" is the front view).
+must measure with a ruler (from its list; clearance is a print setting, not a measurement). The app draws where to
+measure on the photos itself; for each you write a short label (2–4 words) and one short sentence for the user on why
+the fix needs it.
 Answer with JSON only:
 {{"fix_type": str, "title": str, "explanation": str, "rationale": "<one short sentence for the user: why this fix>",
- "measurements": [{{"key": str, "label": str, "hint": str, "photo": "top"|"side"|"closeup",
-                   "line": [[x1, y1], [x2, y2]], "example": number}}]}}"""
+ "measurements": [{{"key": str, "label": str, "hint": "<why we need this>", "example": number}}]}}"""
 
 
 @app.post("/diagnose")
@@ -123,6 +123,13 @@ async def diagnose(top: UploadFile = File(...), side: UploadFile = File(...), cl
     out["outlines"] = {v: [[x / o["image_size"][0], y / o["image_size"][1]] for x, y in o["polygon"]]
                        for v, o in found.items()}  # 0-1, for the overlay
     out["shape"] = {"top": found["top"], "front": found["side"]}  # px; /generate turns it into mm
+    if hasattr(mod, "dimension_lines"):  # where to measure: computed from SAM's outlines, never LLM coordinates
+        dims = mod.dimension_lines(out["shape"])
+        out["extent_px"] = dims.pop("extent_px")  # the UI cross-checks the typed values' mm/px per view
+        for m in out["measurements"]:
+            d = dims[m["key"]]
+            m |= {"letter": d["letter"], "photo": "side" if d["photo"] == "front" else d["photo"], "line": d["line"]}
+        out["measurements"].sort(key=lambda m: list(mod.PARAMS).index(m["key"]))
     return out
 
 
