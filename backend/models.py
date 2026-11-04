@@ -5,6 +5,7 @@ import json
 import os
 import threading
 import time
+from collections import Counter
 from datetime import date
 from pathlib import Path
 from string import Template
@@ -20,6 +21,10 @@ CACHE = Path(os.getenv("CACHE_DIR", HERE / ".cache"))  # a Modal Volume in produ
 DAILY_CAP = int(os.getenv("DAILY_PAID_CALL_CAP", "300"))  # paid (live, uncached) model calls per day
 MOCKS = HERE / "mocks"
 MOCK_LATENCY = float(os.getenv("MOCK_LATENCY", "1.0"))
+# Mock entries marked "fake": true (first CAD attempt broken, first photo check per view fails) are
+# served only when this is on, to exercise the repair loop and the retake-guidance UI.
+DEV_FAKE_FAILURES = os.getenv("DEV_FAKE_FAILURES", "0") == "1"
+_mock_calls = Counter()
 
 BASETEN_URL = "https://inference.baseten.co/v1/chat/completions"  # OpenAI-compatible
 META_URL = "https://api.meta.ai/v1/responses"  # Responses API: the only Meta protocol that returns reasoning summaries
@@ -96,9 +101,14 @@ def call(provider: str, payload: dict, mock: str, mock_vars: dict | None = None)
     t0 = time.time()
     source = "mock"
     if MOCK_MODE:
-        n = sum(m["role"] == "assistant" for m in payload.get("messages", []))
         raw = Template((MOCKS / f"{mock}.json").read_text()).safe_substitute(mock_vars or {})
-        resp = json.loads(raw)[n]
+        entries = [e for e in json.loads(raw) if DEV_FAKE_FAILURES or not e.get("fake")]
+        if "messages" in payload:  # multi-turn (repair loop): one entry per assistant turn so far
+            n = sum(m["role"] == "assistant" for m in payload["messages"])
+        else:  # single-shot (photo check): Nth repeat of the same prompt, last entry once exhausted
+            n = min(_mock_calls[mock, payload.get("prompt")], len(entries) - 1)
+            _mock_calls[mock, payload.get("prompt")] += 1
+        resp = entries[n]
         time.sleep(MOCK_LATENCY)  # so the UI's streaming is visible in demos
     else:
         try:

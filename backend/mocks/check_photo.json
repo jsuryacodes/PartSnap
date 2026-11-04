@@ -1,3 +1,4 @@
 [
+  {"fake": true, "content": "{\"ok\": false, \"retake_instruction\": \"Move closer so the chip fills more of the frame.\"}", "usage": {"prompt_tokens": 1450, "completion_tokens": 24}},
   {"content": "{\"ok\": true, \"retake_instruction\": null}", "usage": {"prompt_tokens": 1450, "completion_tokens": 18}}
 ]

@@ -59,7 +59,9 @@ if __name__ == "__main__":
             events.append(e)
             print(fix, {k: v for k, v in e.items() if k not in ("code", "gaps")})
         verifies = [e for e in events if e["type"] == "verify"]
-        if models.MOCK_MODE:  # each mock's first attempt is deliberately wrong, so this exercises repair
+        if models.MOCK_MODE and models.DEV_FAKE_FAILURES:  # first mock attempt is deliberately wrong
             assert events[-1]["ok"] and len(verifies) == 2 and not verifies[0]["ok"], fix
+        elif models.MOCK_MODE:
+            assert events[-1]["ok"] and len(verifies) == 1, fix
     if models.MOCK_MODE:
-        print("mock repair loop check passed")
+        print(f"mock check passed (DEV_FAKE_FAILURES={int(models.DEV_FAKE_FAILURES)})")
