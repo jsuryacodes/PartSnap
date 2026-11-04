@@ -98,10 +98,11 @@ def _spend():
         f.write_text(str(n + 1))
 
 
-def call(provider: str, payload: dict, mock: str, mock_vars: dict | None = None) -> dict:
+def call(provider: str, payload: dict, mock: str, mock_vars: dict | None = None, mock_index: int | None = None) -> dict:
     """mock: name of mocks/<mock>.json, a list of responses. In MOCK_MODE the Nth response is
-    returned, where N = number of assistant turns already in payload["messages"] (repair round).
-    ${name} tokens in the mock file are filled from mock_vars (e.g. the user's measurements)."""
+    returned: N = mock_index if given (e.g. the repair attempt), else the number of assistant turns already in
+    payload["messages"], else how often this prompt was asked. ${name} tokens in the mock file are filled from
+    mock_vars (e.g. the user's measurements). The response's "model" is the model that answered (after any fallback)."""
     t0 = time.time()
     source = "mock"
     if MOCK_MODE:
@@ -109,7 +110,9 @@ def call(provider: str, payload: dict, mock: str, mock_vars: dict | None = None)
         if mock_vars:  # only then: Template turns "$$" into "$", which corrupts base85 SAM masks
             raw = Template(raw).safe_substitute(mock_vars)
         entries = [e for e in json.loads(raw) if DEV_FAKE_FAILURES or not e.get("fake")]
-        if "messages" in payload:  # multi-turn (repair loop): one entry per assistant turn so far
+        if mock_index is not None:
+            n = min(mock_index, len(entries) - 1)
+        elif "messages" in payload:  # multi-turn (repair loop): one entry per assistant turn so far
             n = sum(m["role"] == "assistant" for m in payload["messages"])
         else:  # single-shot (photo check): Nth repeat of the same prompt, last entry once exhausted
             n = min(_mock_calls[mock, payload.get("prompt")], len(entries) - 1)
@@ -126,7 +129,7 @@ def call(provider: str, payload: dict, mock: str, mock_vars: dict | None = None)
             payload = {**payload, "model": SPARK}
             resp, source = _cached_or_live(provider, payload)
     _log_usage(provider, payload.get("model"), source, resp.get("usage") or {}, time.time() - t0)
-    return resp
+    return {**resp, "model": payload.get("model")}
 
 
 def _cached_or_live(provider, payload):
@@ -241,8 +244,8 @@ if __name__ == "__main__":  # offline self-check: no network, no keys used
         return {"content": "OK", "usage": {}}
 
     PROVIDERS["meta"] = flaky
-    assert call("meta", {"model": WONDER, "prompt": "hi"}, mock="")["content"] == "OK"
-    assert tried == [WONDER, SPARK], tried
+    r = call("meta", {"model": WONDER, "prompt": "hi"}, mock="")
+    assert r["content"] == "OK" and r["model"] == SPARK and tried == [WONDER, SPARK], (r, tried)
 
     def down(p):
         tried.append(p["model"])

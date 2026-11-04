@@ -15,7 +15,7 @@ from starlette.concurrency import run_in_threadpool
 
 import models
 import outline
-import spark_cad
+import wonder_cad
 from fixes import FIXES
 from verify import OUT_DIR
 
@@ -59,7 +59,8 @@ VIEWS = {
 
 CHECK_PROMPT = """You check photos for a repair app. The user was asked for: {want}.
 Does the photo match that view, and is the damage clearly visible?
-Answer with JSON only: {{"ok": true|false, "retake_instruction": null | "<one short sentence telling the user how to retake>"}}"""
+Answer with JSON only: {{"ok": true|false, "retake_instruction": null | "<one short sentence telling the user how to retake>",
+ "rationale": "<one short sentence for the user: what you saw>"}}"""
 
 
 async def _read(photo: UploadFile) -> bytes:
@@ -74,28 +75,26 @@ async def check_photo(view: str = Form(...), photo: UploadFile = File(...)):
     if view not in VIEWS:
         raise HTTPException(400, f"view must be one of {list(VIEWS)}")
     out = models.meta_json(CHECK_PROMPT.format(want=VIEWS[view]), [await _read(photo)], mock="check_photo")
-    return {"ok": bool(out.get("ok")), "retake_instruction": out.get("retake_instruction"), "by": "Muse Spark"}
+    return {"ok": bool(out.get("ok")), "retake_instruction": out.get("retake_instruction"),
+            "rationale": out.get("rationale"), "by": "Muse Spark"}
 
 
 DIAGNOSE_PROMPT = """You diagnose damaged household objects for a 3D-printed repair app.
-Photos, in order: top view, side view, close-up of the damage.
-Available fix types (for a chipped corner or edge, pick chip_fill unless the chip can't be filled):
+Photos, in order: top view (looking down at the chipped edge), front view (looking at the edge's front face),
+close-up of the damage.
+Available fix types (for a chipped edge, pick chip_fill unless the chip can't be filled):
 {fixes}
-Pick the fix type and explain the damage and the fix in 1–2 sentences. Outline the missing area on the top and side
-photos: each outline starts at the corner, runs along one edge, follows the break and ends on the other edge.
-Choose which of that fix's parameters the user must measure with a ruler (2–3, from its list).
-For each, give a line on the photo where to measure. All coordinates are 0–1 image coordinates.
+Pick the fix type and explain the damage and the fix in 1–2 sentences. Choose which of that fix's parameters the user
+must measure with a ruler (from its list; clearance is a print setting, not a measurement). For each, give a line on
+the photo where to measure, in 0–1 image coordinates ("side" is the front view).
 Answer with JSON only:
-{{"fix_type": str, "title": str, "explanation": str,
- "outlines": {{"top": [[x, y], ...], "side": [[x, y], ...]}},
+{{"fix_type": str, "title": str, "explanation": str, "rationale": "<one short sentence for the user: why this fix>",
  "measurements": [{{"key": str, "label": str, "hint": str, "photo": "top"|"side"|"closeup",
                    "line": [[x1, y1], [x2, y2]], "example": number}}]}}"""
 
 
 @app.post("/diagnose")
 async def diagnose(top: UploadFile = File(...), side: UploadFile = File(...), closeup: UploadFile = File(...)):
-    # TODO(user): SAM 3.1 should supply the outlines (polygons + the image size they're in); the mock stands in
-    # for SAM + Muse Spark together. Wire SAM through models.call() once its host is chosen.
     fixes = "\n".join(f"- {k}: {m.__doc__.strip().splitlines()[0]} Parameters: {list(m.PARAMS)}" for k, m in FIXES.items())
     images = [await _read(f) for f in (top, side, closeup)]
     out = models.meta_json(DIAGNOSE_PROMPT.format(fixes=fixes), images, mock="diagnose")
@@ -103,7 +102,6 @@ async def diagnose(top: UploadFile = File(...), side: UploadFile = File(...), cl
     if mod is None:
         raise HTTPException(502, f"model picked an unknown fix type: {out.get('fix_type')!r}")
     out["measurements"] = [m for m in out.get("measurements", []) if m.get("key") in mod.PARAMS]
-    out.setdefault("outlines", {})
     measured = {m["key"] for m in out["measurements"]}
     # Parameters the user doesn't measure (wall, clearance) are print settings with defaults from make().
     out["settings"] = {k: v.default for k, v in inspect.signature(mod.make).parameters.items()
@@ -113,9 +111,16 @@ async def diagnose(top: UploadFile = File(...), side: UploadFile = File(...), cl
         raise HTTPException(502, f"diagnosis did not ask for required measurements: {sorted(missing)}")
     out["param_help"] = mod.PARAMS
     out["by"] = {"diagnosis": "Muse Spark", "segmentation": "SAM 3.1"}
-    # Everything /generate needs to turn the outlines into millimetres; the frontend passes it back untouched.
-    out["shape"] = {"outlines": out["outlines"], "size": out.pop("size", {}),
-                    "lines": {m["key"]: m["line"] for m in out["measurements"]}}
+    # The chip's outlines come from SAM 3.1, never from the LLM (it can't place pixels reliably).
+    found = {}
+    for view, img, mock in (("top", images[0], "sam_top"), ("side", images[1], "sam_front")):
+        found[view] = (await run_in_threadpool(outline.find_chip, img, mock=mock))["outline"]
+        if found[view] is None:
+            raise HTTPException(422, f"Couldn't find the chip in the {'top' if view == 'top' else 'front'} photo. "
+                                     "Retake it closer, with the chip in the middle.")
+    out["outlines"] = {v: [[x / o["image_size"][0], y / o["image_size"][1]] for x, y in o["polygon"]]
+                       for v, o in found.items()}  # 0-1, for the overlay
+    out["shape"] = {"top": found["top"], "front": found["side"]}  # px; /generate turns it into mm
     return out
 
 
@@ -156,27 +161,29 @@ class GenerateReq(BaseModel):
 @app.post("/generate")
 def generate(req: GenerateReq, request: Request):
     """Server-sent events: attempt / code / verify per attempt, then done."""
-    mod = FIXES.get(req.fix)
-    if mod is None:
-        raise HTTPException(400, f"unknown fix type {req.fix!r}")
+    if req.fix != "chip_fill":  # the CAD agent designs chip fills only
+        raise HTTPException(400, f"only chip_fill can be generated, not {req.fix!r}")
+    mod = FIXES[req.fix]
     if set(req.params) != set(mod.PARAMS):
         raise HTTPException(400, f"params must be exactly {sorted(mod.PARAMS)}")
-    if not all(0 < v <= 1000 for v in req.params.values()) or req.params.get("clearance", 0) > 2:
-        raise HTTPException(400, "measurements must be in (0, 1000] mm and clearance at most 2 mm")
+    if not all(0 < v <= 1000 for v in req.params.values()) or req.params["clearance"] not in wonder_cad.CLEARANCES:
+        raise HTTPException(400, "measurements must be in (0, 1000] mm and clearance 0.2 or 0.4 mm")
     params = dict(req.params)
-    if hasattr(mod, "outlines_mm"):
-        try:
-            params |= mod.outlines_mm(req.shape or {}, **params)
-        except (KeyError, TypeError, ValueError, ZeroDivisionError) as ex:
-            raise HTTPException(400, f"could not read the photo outlines: {ex!r}")
+    try:
+        params |= mod.outlines_mm(req.shape or {}, **params)
+    except (KeyError, TypeError, ValueError, ZeroDivisionError) as ex:
+        raise HTTPException(400, f"could not read the photo outlines: {ex!r}")
     _rate_limit(request)
+    url = lambda path: f"/stl/{Path(path).name}"  # never send server paths
 
     def events():
         try:
-            for e in spark_cad.run(req.fix, params):
-                for k in ("stl", "mate"):  # never send server paths; done carries the download URLs
+            for e in wonder_cad.run(params):
+                for k in ("stl", "mate"):
                     if e.get(f"{k}_path"):
-                        e[f"{k}_url"] = f"/stl/{Path(e.pop(f'{k}_path')).name}"
+                        e[f"{k}_url"] = url(e.pop(f"{k}_path"))
+                for s in e.get("stls", []):
+                    s["url"] = url(s.pop("path"))
                 yield f"data: {json.dumps(e)}\n\n"
         except models.BudgetExceeded:
             yield f"data: {json.dumps({'type': 'error', 'message': BUDGET_MSG})}\n\n"

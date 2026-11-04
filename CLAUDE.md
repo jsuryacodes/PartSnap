@@ -17,9 +17,10 @@ backend/
   verify.py       sandboxed run (fix helpers + params injected) + watertight / bbox / overlap / per-face gap (OCC
                   point distance) / min-thickness checks + STL export (piece + mating object)
   models.py       all model calls: MOCK_MODE, disk cache, token logging
-  mocks/          saved model responses for MOCK_MODE (diagnose.json is chip_fill; spark_cad_<fix>.json per fix)
-  spark_cad.py    Spark Open -> CadQuery -> verify -> repair loop; run() yields progress events
-  app.py          FastAPI: /check-photo, /diagnose, /generate (SSE), /stl/{name}
+  mocks/          saved model responses for MOCK_MODE (wonder_cad_chip_fill.json: known-bad (fake) + known-good agent code)
+  wonder_cad.py   Muse Wonder -> CadQuery calling chip_fill's helpers -> verify (0.2 + 0.4 mm) -> repair loop (max 3);
+                  run() yields agent-log events; every attempt logged to .cache/agent_log.jsonl
+  app.py          FastAPI: /check-photo, /diagnose (SAM outlines + Spark), /outline, /generate (SSE), /stl/{name}
 frontend/src/
   Landing -> Capture -> Measure -> Generate -> Result   one component per screen; api.ts holds all fetches
   HowItWorks.tsx  /how-it-works: lazy-loaded scroll-driven three.js explainer; still frames under reduced motion
@@ -33,7 +34,7 @@ cd backend && python3.12 -m venv .venv && .venv/bin/pip install -r requirements.
 .venv/bin/uvicorn app:app --port 8000     # API (MOCK_MODE=1 unless backend/.env says otherwise)
 .venv/bin/python -m fixes.chip_fill      # self-check: helpers on the hero outlines (MOCK_MODE=1 MOCK_LATENCY=0)
 .venv/bin/python verify.py                # self-check: known-good / known-bad agent code, corner cap
-.venv/bin/python spark_cad.py             # Spark Open -> CadQuery -> verify loop
+.venv/bin/python wonder_cad.py            # mock agent loop (DEV_FAKE_FAILURES=1 shows a repair)
 cd frontend && npm i && npm run dev       # HTTPS on the LAN for phones; /api proxies to :8000
 HTTP=1 npx vite --port 5174               # plain HTTP for desktop browser testing
 ```
