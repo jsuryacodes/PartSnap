@@ -11,8 +11,10 @@ from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel
+from starlette.concurrency import run_in_threadpool
 
 import models
+import outline
 import spark_cad
 from fixes import FIXES
 from verify import OUT_DIR
@@ -115,6 +117,34 @@ async def diagnose(top: UploadFile = File(...), side: UploadFile = File(...), cl
     out["shape"] = {"outlines": out["outlines"], "size": out.pop("size", {}),
                     "lines": {m["key"]: m["line"] for m in out["measurements"]}}
     return out
+
+
+@app.post("/outline")
+async def chip_outline(view: str = Form(...), photo: UploadFile = File(...),
+                       x: float | None = Form(None), y: float | None = Form(None)):
+    """SAM 3.1 outline of the chip. x, y: optional tap on the chip (photo px) for the point-prompt fallback.
+    outline is null when no plausible mask was found: the UI then asks the user to tap the outline."""
+    if view not in ("top", "side"):
+        raise HTTPException(400, "view must be top or side")
+    data = await _read(photo)
+    point = (x, y) if x is not None and y is not None else None
+    return await run_in_threadpool(outline.find_chip, data, point, mock="sam_top" if view == "top" else "sam_front")
+
+
+class TapOutline(BaseModel):
+    points: list[list[float]]  # [[x, y], ...] in photo px, in tap order
+    image_size: list[int]  # [w, h] of the photo the taps are on
+
+
+@app.post("/outline/tap")
+def tap_outline(req: TapOutline):
+    """User-tapped fallback: same outline structure as /outline, so later steps don't care about the source."""
+    if len(req.image_size) != 2 or min(req.image_size) <= 0:
+        raise HTTPException(400, "image_size must be [w, h]")
+    try:
+        return {"outline": outline.from_taps(req.points, tuple(req.image_size)), "attempts": []}
+    except ValueError as e:
+        raise HTTPException(400, str(e))
 
 
 class GenerateReq(BaseModel):
