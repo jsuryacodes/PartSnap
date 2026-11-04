@@ -5,7 +5,11 @@ Meta Global AI Developer Hackathon (Indie, solo). Deadline: Wed Nov 4 2026, 10 P
 
 ## Stack
 - `frontend/`: React + Vite + TypeScript, mobile-first, deploys to Vercel (HTTPS for camera).
-- `backend/`: Python 3.12 FastAPI + CadQuery, deploys as a Hugging Face Docker Space (backend/Dockerfile + backend/README.md header; `git subtree push --prefix backend space main`). Holds all API keys.
+- `backend/`: Python 3.12 FastAPI + CadQuery, hosted on Modal (`backend/modal_app.py`, app `partsnap-api`):
+  https://penumatchajayasurya--partsnap-api.us-east.modal.run. Run `scripts/deploy_backend.sh` after EVERY backend
+  change (Modal serves the code from the last deploy). min_containers=1 (always warm, bills while idle; set 0 after
+  the demo) and max_containers=1 (in-memory rate limits). Keys in Modal secret `partsnap-keys`; cache + STLs on
+  Volume `partsnap-data`. Fallback host: `scripts/serve_public.sh` (this Mac + Cloudflare tunnel).
 
 ## Layout
 ```
