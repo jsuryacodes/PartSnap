@@ -55,7 +55,7 @@ def from_polygon(polygon, image_size, source: str, score: float | None = None) -
     pts = np.asarray(polygon, float)
     return {"polygon": [[round(float(x), 1), round(float(y), 1)] for x, y in pts], "area_px": round(_area(pts), 1),
             "bbox": [round(float(v), 1) for v in (*pts.min(0), *pts.max(0))], "image_size": list(image_size),
-            "source": source, "score": score}
+            "source": source, "score": None if score is None else round(score, 3)}
 
 
 def from_taps(points, image_size) -> dict:
@@ -134,9 +134,12 @@ if __name__ == "__main__":  # offline self-check (MOCK_MODE): no network
         assert o and o["source"] == "sam" and len(r["attempts"]) == 1, r["attempts"]
         assert AREA_RANGE[0] < o["area_px"] / (1204 * 1600) < AREA_RANGE[1] and len(o["polygon"]) >= 8, o
         assert all(0 <= x <= 1204 and 0 <= y <= 1600 for x, y in o["polygon"])
-        if view == "top":  # the mock's higher-scoring "whole table" match must lose to the chip
-            assert [m["area_frac"] > AREA_RANGE[1] for m in r["attempts"][0]["matches"]] == [True, False]
         save_overlay(photo, o, Path(tempfile.mkdtemp()) / "o.png", view)
+
+    # a higher-scoring "whole table" mask loses to a plausible chip; nothing plausible -> None
+    fake = lambda frac, score: {"mask": np.ones(int(frac * 10000), bool), "score": score, "contours": [[(0, 0)]]}
+    assert _plausible([fake(0.8, 0.95), fake(0.02, 0.7)], (100, 100))["score"] == 0.7
+    assert _plausible([fake(0.8, 0.95), fake(0.0001, 0.9)], (100, 100)) is None
 
     t = from_taps([[10, 10], [110, 10], [60, 90]], (1204, 1600))
     assert set(t) == set(o) and t["area_px"] == 4000 and t["bbox"] == [10, 10, 110, 90], t

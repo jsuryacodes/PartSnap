@@ -105,7 +105,9 @@ def call(provider: str, payload: dict, mock: str, mock_vars: dict | None = None)
     t0 = time.time()
     source = "mock"
     if MOCK_MODE:
-        raw = Template((MOCKS / f"{mock}.json").read_text()).safe_substitute(mock_vars or {})
+        raw = (MOCKS / f"{mock}.json").read_text()
+        if mock_vars:  # only then: Template turns "$$" into "$", which corrupts base85 SAM masks
+            raw = Template(raw).safe_substitute(mock_vars)
         entries = [e for e in json.loads(raw) if DEV_FAKE_FAILURES or not e.get("fake")]
         if "messages" in payload:  # multi-turn (repair loop): one entry per assistant turn so far
             n = sum(m["role"] == "assistant" for m in payload["messages"])
