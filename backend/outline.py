@@ -15,14 +15,14 @@ AREA_RANGE = (0.001, 0.15)  # plausible chip area as a fraction of the photo (re
 TOLERANCE_PX = 1.0  # simplification tolerance in SAM-image px; small so the break stays irregular
 
 
-def prep_image(data: bytes, max_px: int = MAX_PX) -> tuple[bytes, tuple[int, int], float]:
-    """(upright JPEG downscaled for SAM, original upright size, original px per SAM px)."""
+def prep_image(data: bytes, max_px: int = MAX_PX) -> tuple[bytes, tuple[int, int], tuple[float, float]]:
+    """(upright JPEG downscaled for SAM, original upright size, (x, y) original px per SAM px)."""
     im = ImageOps.exif_transpose(Image.open(io.BytesIO(data))).convert("RGB")
     size = im.size
     im.thumbnail((max_px, max_px))
     buf = io.BytesIO()
     im.save(buf, "JPEG", quality=90)
-    return buf.getvalue(), size, size[0] / im.size[0]
+    return buf.getvalue(), size, (size[0] / im.size[0], size[1] / im.size[1])
 
 
 def _rdp(pts: np.ndarray, tol: float) -> np.ndarray:
@@ -48,13 +48,13 @@ def simplify(ring, tol: float = TOLERANCE_PX) -> np.ndarray:
 
 def _area(pts) -> float:
     x, y = np.asarray(pts, float).T
-    return 0.5 * abs(np.dot(x, np.roll(y, -1)) - np.dot(y, np.roll(x, -1)))
+    return 0.5 * float(abs(np.dot(x, np.roll(y, -1)) - np.dot(y, np.roll(x, -1))))
 
 
 def from_polygon(polygon, image_size, source: str, score: float | None = None) -> dict:
     pts = np.asarray(polygon, float)
-    return {"polygon": [[round(x, 1), round(y, 1)] for x, y in pts], "area_px": round(_area(pts), 1),
-            "bbox": [round(v, 1) for v in (*pts.min(0), *pts.max(0))], "image_size": list(image_size),
+    return {"polygon": [[round(float(x), 1), round(float(y), 1)] for x, y in pts], "area_px": round(_area(pts), 1),
+            "bbox": [round(float(v), 1) for v in (*pts.min(0), *pts.max(0))], "image_size": list(image_size),
             "source": source, "score": score}
 
 
@@ -86,7 +86,7 @@ def find_chip(photo: bytes, point: tuple | None = None, prompts=PROMPTS, use_poi
     tries = [{"text": t} for t in prompts]
     if use_point:
         x, y = point or (size[0] / 2, size[1] / 2)
-        tries.append({"points": [(x / scale, y / scale, True)]})
+        tries.append({"points": [(x / scale[0], y / scale[1], True)]})
     attempts = []
     for kw in tries:
         res = models.sam(img, mock=mock, timeout=timeout, **kw)
@@ -98,7 +98,7 @@ def find_chip(photo: bytes, point: tuple | None = None, prompts=PROMPTS, use_poi
                          "accepted": best is not None, "usage": res["usage"]})
         if best:
             ring = max(best["contours"], key=_area)
-            return {"outline": from_polygon(simplify(ring) * scale, size, "sam", best["score"]), "attempts": attempts}
+            return {"outline": from_polygon(simplify(ring) * np.array(scale), size, "sam", best["score"]), "attempts": attempts}
     return {"outline": None, "attempts": attempts}
 
 
