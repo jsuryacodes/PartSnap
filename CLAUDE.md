@@ -5,7 +5,7 @@ Meta Global AI Developer Hackathon (Indie, solo). Deadline: Wed Nov 4 2026, 10 P
 
 ## Stack
 - `frontend/`: React + Vite + TypeScript, mobile-first, deploys to Vercel (HTTPS for camera).
-- `backend/`: Python 3.12 FastAPI + CadQuery, deploys to Render (Docker, render.yaml; Standard plan for memory). Holds all API keys.
+- `backend/`: Python 3.12 FastAPI + CadQuery, deploys as a Hugging Face Docker Space (backend/Dockerfile + backend/README.md header; `git subtree push --prefix backend space main`). Holds all API keys.
 
 ## Layout
 ```
