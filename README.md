@@ -16,6 +16,9 @@
 
 Fix types: **chip fill** (the default), the exact missing piece of a chipped corner, glued back in; and **corner cap**, an L-shaped cap that slides over the corner.
 
+## Deployment
+Backend hosted on Modal (`backend/modal_app.py`, deploy with `scripts/deploy_backend.sh`); frontend on Vercel.
+
 ## Setup
 ```
 cd backend && python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt
