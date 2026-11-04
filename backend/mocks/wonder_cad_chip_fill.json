@@ -1,0 +1,19 @@
+[
+ {
+  "fake": true,
+  "content": "{\"code\": \"def far_chain(poly):\\n    \\\"\\\"\\\"The part of a closed outline between its two ends (min and max x) that lies farther from the edge.\\\"\\\"\\\"\\n    n = len(poly)\\n    a = min(range(n), key=lambda i: poly[i][0])\\n    b = max(range(n), key=lambda i: poly[i][0])\\n    one = [poly[(a + k) % n] for k in range((b - a) % n + 1)]\\n    two = [poly[(b + k) % n] for k in range((a - b) % n + 1)]\\n    return max(one, two, key=lambda chain: sum(p[1] for p in chain) / len(chain))\\n\\n\\n# Back boundary of the top outline, bottom boundary of the front outline.\\nmissing = loft_between(far_chain(TOP), far_chain(FRONT))\\nresult, trimmed_mm = enforce_min_thickness(missing, MIN_THICKNESS)\\n\", \"rationale\": \"I lofted the back edge of the top outline to the bottom edge of the front outline and trimmed the thin ends to keep the piece at least 1 mm thick.\", \"fix_type\": \"chip_fill\", \"trimmed_mm\": ${trimmed_mm}}",
+  "usage": {
+   "prompt_tokens": 1450,
+   "completion_tokens": 900,
+   "reasoning_tokens": 610
+  }
+ },
+ {
+  "content": "{\"code\": \"def far_chain(poly):\\n    \\\"\\\"\\\"The part of a closed outline between its two ends (min and max x) that lies farther from the edge.\\\"\\\"\\\"\\n    n = len(poly)\\n    a = min(range(n), key=lambda i: poly[i][0])\\n    b = max(range(n), key=lambda i: poly[i][0])\\n    one = [poly[(a + k) % n] for k in range((b - a) % n + 1)]\\n    two = [poly[(b + k) % n] for k in range((a - b) % n + 1)]\\n    return max(one, two, key=lambda chain: sum(p[1] for p in chain) / len(chain))\\n\\n\\n# Back boundary of the top outline, bottom boundary of the front outline.\\nmissing = loft_between(far_chain(TOP), far_chain(FRONT))\\npiece = offset_inward(missing, CLEARANCE)\\nresult, trimmed_mm = enforce_min_thickness(piece, MIN_THICKNESS)\\n\", \"rationale\": \"I lofted the back edge of the top outline to the bottom edge of the front outline, moved the break surface in by the clearance so it slides in, and trimmed ${trimmed_mm} mm of thin ends (${blunt_mm} at the blunt end, ${feather_mm} of feather) to keep it at least 1 mm thick.\", \"fix_type\": \"chip_fill\", \"trimmed_mm\": ${trimmed_mm}}",
+  "usage": {
+   "prompt_tokens": 2350,
+   "completion_tokens": 820,
+   "reasoning_tokens": 540
+  }
+ }
+]
