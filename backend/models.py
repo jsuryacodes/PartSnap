@@ -184,7 +184,8 @@ def sam(image_jpeg: bytes, text: str | None = None, box: tuple | None = None, po
         sx, sy = bw / m.width, bh / m.height  # the mask raster is box-local and smaller than the box
         local = np.frombuffer(decode_mask_to_raster(m), np.uint8).reshape(m.height, m.width)
         full = np.zeros((h, w), bool)
-        full[y0:y0 + bh, x0:x0 + bw] = np.asarray(Image.fromarray(local * 255).resize((bw, bh), Image.NEAREST)) > 0
+        patch = np.asarray(Image.fromarray(local * 255).resize((bw, bh), Image.NEAREST)) > 0
+        full[y0:y0 + bh, x0:x0 + bw] = patch[:max(0, h - y0), :max(0, w - x0)]  # clip: mocks may not fit the photo
         contours = [[(x0 + (float(x) + 0.5) * sx, y0 + (float(y) + 0.5) * sy)  # raster pixel c spans c±0.5
                      for x, y in (pt.split() for pt in sub.strip().rstrip("Z").split("L"))]
                     for sub in decode_mask_to_svg_path(m).split("M") if sub.strip()]
