@@ -2,7 +2,9 @@
 import inspect
 import json
 import os
+import queue
 import re
+import threading
 import time
 from collections import defaultdict, deque
 from pathlib import Path
@@ -176,7 +178,7 @@ def generate(req: GenerateReq, request: Request):
     _rate_limit(request)
     url = lambda path: f"/stl/{Path(path).name}"  # never send server paths
 
-    def events():
+    def produce(q: queue.Queue):
         try:
             for e in wonder_cad.run(params):
                 for k in ("stl", "mate"):
@@ -184,11 +186,27 @@ def generate(req: GenerateReq, request: Request):
                         e[f"{k}_url"] = url(e.pop(f"{k}_path"))
                 for s in e.get("stls", []):
                     s["url"] = url(s.pop("path"))
-                yield f"data: {json.dumps(e)}\n\n"
+                q.put(e)
         except models.BudgetExceeded:
-            yield f"data: {json.dumps({'type': 'error', 'message': BUDGET_MSG})}\n\n"
+            q.put({"type": "error", "message": BUDGET_MSG})
         except Exception as ex:  # the stream has already started, so report errors as an event
-            yield f"data: {json.dumps({'type': 'error', 'message': f'Generation failed: {ex}'})}\n\n"
+            q.put({"type": "error", "message": f"Generation failed: {ex}"})
+        q.put(None)
+
+    def events():
+        # The agent runs in a thread; an SSE comment every 15 s keeps proxies (Cloudflare drops a silent request
+        # after ~100 s) from cutting the stream while Wonder thinks.
+        q = queue.Queue()
+        threading.Thread(target=produce, args=(q,), daemon=True).start()
+        while True:
+            try:
+                e = q.get(timeout=15)
+            except queue.Empty:
+                yield ": keep-alive\n\n"
+                continue
+            if e is None:
+                return
+            yield f"data: {json.dumps(e)}\n\n"
 
     return StreamingResponse(events(), media_type="text/event-stream", headers={"Cache-Control": "no-cache"})
 
