@@ -16,6 +16,32 @@
 
 Fix types: **chip fill** (the default), the exact missing piece of a chipped corner, glued back in; and **corner cap**, an L-shaped cap that slides over the corner.
 
+## Screenshots
+
+![Capture](docs/screenshots/capture.jpg)
+*Guided capture: ghost frame on the table edge with a live tilt level.*
+
+![Capture, second take](docs/screenshots/capture-2.jpg)
+*Another capture take lined up on the chip.*
+
+![Capture ready](docs/screenshots/capture-ready.jpg)
+*Chip inside the ghost frame; shutter ready.*
+
+![Photo check](docs/screenshots/photo-check.jpg)
+*Photo check: Muse Spark Open confirms the shot, with its reasoning.*
+
+![Measure outlines](docs/screenshots/measure-outlines.jpg)
+*SAM outlines with the A/B/C dimension lines to measure.*
+
+![Measure](docs/screenshots/measure.jpg)
+*Measure screen before entering the three dimensions.*
+
+![Measure filled](docs/screenshots/measure-filled.jpg)
+*Measurements entered, clearance set, ready to generate.*
+
+![Result](docs/screenshots/result.jpg)
+*Verified result: the piece seated in the chip, STL downloads, glue-in steps.*
+
 ## Deployment
 Backend hosted on Modal (`backend/modal_app.py`, deploy with `scripts/deploy_backend.sh`); frontend on Vercel.
 
