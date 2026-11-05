@@ -18,29 +18,15 @@ Fix types: **chip fill** (the default), the exact missing piece of a chipped cor
 
 ## Screenshots
 
-![Capture](docs/screenshots/capture.jpg)
-*Guided capture: ghost frame on the table edge with a live tilt level.*
+<table>
+<tr><td><b>Capture</b><br><img src="docs/screenshots/capture.jpg" width="300"></td><td><b>Capture, second take</b><br><img src="docs/screenshots/capture-2.jpg" width="300"></td></tr>
 
-![Capture, second take](docs/screenshots/capture-2.jpg)
-*Another capture take lined up on the chip.*
+<tr><td><b>Capture ready</b><br><img src="docs/screenshots/capture-ready.jpg" width="300"></td><td><b>Photo check</b><br><img src="docs/screenshots/photo-check.jpg" width="300"></td></tr>
 
-![Capture ready](docs/screenshots/capture-ready.jpg)
-*Chip inside the ghost frame; shutter ready.*
+<tr><td><b>Measure A/B/C</b><br><img src="docs/screenshots/measure-outlines.jpg" width="300"></td><td><b>Measure</b><br><img src="docs/screenshots/measure.jpg" width="300"></td></tr>
 
-![Photo check](docs/screenshots/photo-check.jpg)
-*Photo check: Muse Spark Open confirms the shot, with its reasoning.*
-
-![Measure outlines](docs/screenshots/measure-outlines.jpg)
-*SAM outlines with the A/B/C dimension lines to measure.*
-
-![Measure](docs/screenshots/measure.jpg)
-*Measure screen before entering the three dimensions.*
-
-![Measure filled](docs/screenshots/measure-filled.jpg)
-*Measurements entered, clearance set, ready to generate.*
-
-![Result](docs/screenshots/result.jpg)
-*Verified result: the piece seated in the chip, STL downloads, glue-in steps.*
+<tr><td><b>Measure filled</b><br><img src="docs/screenshots/measure-filled.jpg" width="300"></td><td><b>Review + STLs</b><br><img src="docs/screenshots/result.jpg" width="300"></td></tr>
+</table>
 
 ## Deployment
 Backend hosted on Modal (`backend/modal_app.py`, deploy with `scripts/deploy_backend.sh`); frontend on Vercel.
